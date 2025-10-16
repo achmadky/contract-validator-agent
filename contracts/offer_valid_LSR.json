@@ -1,0 +1,30 @@
+{
+  "api_contract_meta": {
+    "target_url": "https://bantuan-kita.vercel.app/api/offers?page=1&limit=5",
+    "contract_version": "v1.0.0 (Baseline)",
+    "description": "Baseline response structure for /api/offers list endpoint. Full structure serves as implicit contract."
+  },
+  "latest_successful_response": {
+    "data": [
+      {
+        "approvedAt": "2025-08-20T16:40:31.752Z",
+        "city": "Jakarta",
+        "createdAt": "2025-08-20T16:40:16.210Z",
+        "description": "Bersih Rumah",
+        "name": "Sita - Dummy",
+        "paymentRange": "10000",
+        "phoneNumber": "0",
+        "skill": "Bersih Rumah",
+        "status": "approved"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 5,
+      "total": 5,
+      "totalPages": 1,
+      "hasNext": false,
+      "hasPrev": false
+    }
+  }
+}

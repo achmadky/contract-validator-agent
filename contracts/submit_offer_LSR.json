@@ -1,0 +1,27 @@
+{
+  "api_contract_meta": {
+    "target_url": "https://bantuan-kita.vercel.app/api/submit-offer",
+    "method": "POST",
+    "contract_version": "v1.0.0",
+    "description": "Baseline contract for submitting a new offer (POST method)."
+  },
+  "request_details": {
+    "headers": {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    },
+    "body": {
+      "name": "Diffy-cva",
+      "skill": "New Tools",
+      "city": "Python",
+      "phoneNumber": "00",
+      "paymentRange": "0",
+      "description": "Diff the API Response"
+    }
+  },
+  "latest_successful_response": {
+    "success": true,
+    "message": "Penawaran bantuan berhasil dikirim dan menunggu persetujuan admin",
+    "offerId": "-Obg7J8FyncUzzymvNQ3"
+  }
+}

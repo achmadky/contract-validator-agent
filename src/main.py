@@ -3,16 +3,16 @@ import os
 import sys
 from typing import List
 
-# Corrected Imports: All imports are now synchronous
+# Corrected Imports
 from .validation.contract_engine import get_regression_diff
 from .validation.ml_detector import load_anomaly_model, check_performance_anomaly
 from .tools import call_current_api, load_lsr_contract 
 
 # --- CONFIGURATION ---
 CONTRACTS_DIR = "contracts"
-ANOMALY_MODEL_PATH = os.path.join("data", "anomaly_model.pkl")
+ANOMALY_MODEL_PATH = os.path.join("data", "anomaly_model.pkl") 
 
-# --- 1. File Discovery (Remains the same) ---
+# --- 1. File Discovery ---
 def discover_contract_files(directory: str) -> List[str]:
     """Finds all JSON files ending with _LSR.json in the contracts directory."""
     full_paths = []
@@ -38,9 +38,8 @@ def run_contract_validation_agent(contract_files: List[str]):
         
     overall_fail_count = 0
     
-    # 2.2 Iterate through all discovered contracts
     if not contract_files:
-        print("No contract files found to run. Exiting gracefully.")
+        print("No contracts found to run. Exiting gracefully.")
         sys.exit(0)
 
     for lsr_file_path in contract_files:
@@ -50,16 +49,19 @@ def run_contract_validation_agent(contract_files: List[str]):
             target_url = lsr_data["api_contract_meta"]["target_url"]
             contract_name = os.path.basename(lsr_file_path)
             
-            print(f"\n--- Running Contract: {contract_name} ---")
-            print(f"--- Target URL: {target_url} ---")
-            
+            # Print Contract Header 
+            print(f"\n=============================================")
+            print(f"CONTRACT AUDIT: {contract_name}")
+            print(f"URL: {target_url}")
+            print("=============================================")
+
             # --- DETERMINISTIC CHECK ---
             current_response, current_latency = call_current_api(lsr_data, target_url) 
             regression_diff = get_regression_diff(lsr_data, current_response)
             
             final_status = regression_diff.get("status", "PASS") 
             
-            # --- DIRECT REPORTING (Deterministic Result) ---
+            # --- DIRECT REPORTING (Diff-Only Output) ---
             print("\n[DETERMINISTIC VALIDATION AUDIT]")
             
             if final_status == "FAIL":
@@ -70,19 +72,19 @@ def run_contract_validation_agent(contract_files: List[str]):
                 print(f"❌ STATUS: FAILED (CRITICAL REGRESSION)")
                 print(f"   Reason: {regression_diff.get('reason')}")
                 
-                # 1. Report Missing Keys (Critical)
+                # 1. Report Missing Keys (The most severe issue)
                 missing_keys = critical_diff.get('MISSING_KEYS', {})
                 if missing_keys:
-                    print("\n--- 🚨 CRITICAL ERROR: MISSING PARAMETERS (BREAKING CHANGE) ---")
+                    print("\n--- 🚨 BREAKING CHANGE: PARAMETERS REMOVED ---")
                     for path in missing_keys: 
-                        print(f"   🚨 PARAMETER REMOVED: {path}. Was expected in LSR but not found in current response.") 
+                        print(f"   🚨 PARAMETER REMOVED: {path}. Was expected in LSR but not found.") 
                 
                 # 2. Report Type Changes (Critical)
                 if 'TYPE_CHANGES' in critical_diff:
                     print("\n--- 🚨 CRITICAL ERROR: TYPE CHANGE ---")
                     print(f"   Details: {json.dumps(critical_diff['TYPE_CHANGES'], indent=2)}")
 
-                # 3. Report Other Non-Critical Changes
+                # 3. Report Other Non-Critical Changes 
                 if all_other_changes:
                     print("\n--- ⚠️ SOFT WARNINGS (Concurrent Non-Breaking Changes) ---")
                     
@@ -135,12 +137,14 @@ def run_contract_validation_agent(contract_files: List[str]):
             # --- PROBABILISTIC CHECK (ML Result) ---
             is_anomaly = check_performance_anomaly(anomaly_model, current_latency * 1000) 
             
-            print("\n[PROBABILISTIC VALIDATION]")
-            if is_anomaly:
-                 print(f"🔴 WARNING: Performance Anomaly Detected!")
-                 print(f"   Latency: {current_latency:.4f}s (Statistically abnormal for baseline)")
-            else:
-                 print(f"🟢 OK: Latency {current_latency:.4f}s is within expected range.")
+            # Print performance section ONLY if an issue was found (structural or performance)
+            if is_anomaly or final_status != "PASS":
+                print("\n[PROBABILISTIC VALIDATION]")
+                if is_anomaly:
+                     print(f"🔴 WARNING: Performance Anomaly Detected!")
+                     print(f"   Latency: {current_latency:.4f}s (Statistically abnormal for baseline)")
+                elif final_status != "PASS":
+                     print(f"🟢 Latency {current_latency:.4f}s is within expected range.")
 
         except Exception as e:
             print(f"UNEXPECTED ERROR processing {contract_name}: {type(e).__name__}: {e}")
@@ -156,21 +160,18 @@ def run_contract_validation_agent(contract_files: List[str]):
         sys.exit(0)
 
 # -------------------------------------------------------------
-# EXECUTION START - Handles command line arguments for ALL/SPECIFIC execution
+# EXECUTION START
 # -------------------------------------------------------------
 if __name__ == "__main__":
     
     files_to_run = []
     
     if len(sys.argv) > 1:
-        # User provided a file name/path argument (Specific Execution)
         arg_path = sys.argv[1]
         
         if os.path.exists(arg_path) and arg_path.endswith("_LSR.json"):
-            # Path is already correct (e.g., contracts/offers_LSR.json)
             files_to_run = [arg_path]
         else:
-            # Assume user provided just the filename (e.g., offers_LSR.json)
             full_path = os.path.join(CONTRACTS_DIR, arg_path)
             if os.path.exists(full_path):
                 files_to_run = [full_path]
@@ -178,12 +179,10 @@ if __name__ == "__main__":
                 print(f"Error: Specified contract file '{arg_path}' not found in the {CONTRACTS_DIR} directory.")
                 sys.exit(1)
     else:
-        # No argument provided: Run all contracts (Discovery Mode)
         files_to_run = discover_contract_files(CONTRACTS_DIR)
 
     if not files_to_run:
         print("No contracts found to run. Exiting.")
         sys.exit(0)
 
-    # Launch the synchronous run
     run_contract_validation_agent(files_to_run)

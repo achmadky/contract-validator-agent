@@ -8,14 +8,58 @@
     "data": [
       {
         "approvedAt": "2025-08-20T16:40:31.752Z",
-        "city": "Surabaya",
+        "city": "Jakarta",
         "createdAt": "2025-08-20T16:40:16.210Z",
         "description": "Bersih Rumah",
         "name": "Sita - Dummy",
         "paymentRange": "10000",
         "phoneNumber": "0",
-        "status": "Declined",
-        "testing": "testing"
+        "skill": "Bersih Rumah",
+        "status": "approved"
+      },
+      {
+        "approvedAt": "2025-08-15T14:45:56.451Z",
+        "city": "Jakarta",
+        "createdAt": "2025-08-15T14:45:50.501Z",
+        "description": "Memasakkan masakan rumah, Katering",
+        "name": "Siti - Dummy",
+        "paymentRange": "50000",
+        "phoneNumber": "0000000",
+        "skill": "Memasak",
+        "status": "approved"
+      },
+      {
+        "approvedAt": "2025-08-15T14:41:30.366Z",
+        "city": "Surabaya, Ketintang",
+        "createdAt": "2025-08-15T14:39:49.730Z",
+        "description": "Tukang potong taman, Bunga, tanaman liar",
+        "name": "Sutarno - Dummy",
+        "paymentRange": "30000",
+        "phoneNumber": "000000",
+        "skill": "Tukang Taman",
+        "status": "approved"
+      },
+      {
+        "approvedAt": "2025-08-15T13:59:29.205Z",
+        "city": "Sidoarjo",
+        "createdAt": "2025-08-15T13:56:52.030Z",
+        "description": "Menambal Atap, Membersihkan Rumah, Nambal Tembok",
+        "name": "Surya - Dummy",
+        "paymentRange": "50000",
+        "phoneNumber": "0000000",
+        "skill": "Tukang Bangunan",
+        "status": "approved"
+      },
+      {
+        "approvedAt": "2025-08-15T13:55:02.439Z",
+        "city": "Jakarta Selatan, Mampang",
+        "createdAt": "2025-08-15T13:51:38.412Z",
+        "description": "Tukang bersih AC, Memperbaiki AC, Mengganti Freon",
+        "name": "Surapto - Dummy",
+        "paymentRange": "50000",
+        "phoneNumber": "00000000",
+        "skill": "Tukang AC",
+        "status": "approved"
       }
     ],
     "pagination": {

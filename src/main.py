@@ -3,7 +3,7 @@ import os
 import sys
 from typing import List
 
-# Corrected Imports: Assuming these files exist in their respective directories within 'src/'
+# Corrected Imports: All imports are now synchronous
 from .validation.contract_engine import get_regression_diff
 from .validation.ml_detector import load_anomaly_model, check_performance_anomaly
 from .tools import call_current_api, load_lsr_contract 
@@ -12,7 +12,7 @@ from .tools import call_current_api, load_lsr_contract
 CONTRACTS_DIR = "contracts"
 ANOMALY_MODEL_PATH = os.path.join("data", "anomaly_model.pkl")
 
-# --- 1. File Discovery ---
+# --- 1. File Discovery (Remains the same) ---
 def discover_contract_files(directory: str) -> List[str]:
     """Finds all JSON files ending with _LSR.json in the contracts directory."""
     full_paths = []
@@ -27,11 +27,9 @@ def discover_contract_files(directory: str) -> List[str]:
     return full_paths
 
 # --- 2. Main Execution Loop ---
-def run_contract_validation_agent():
+def run_contract_validation_agent(contract_files: List[str]):
     
     # 2.1 Load ML Model (Required for Probabilistic Check)
-    contract_files = discover_contract_files(CONTRACTS_DIR)
-
     try:
         anomaly_model = load_anomaly_model(ANOMALY_MODEL_PATH) 
     except FileNotFoundError:
@@ -42,7 +40,7 @@ def run_contract_validation_agent():
     
     # 2.2 Iterate through all discovered contracts
     if not contract_files:
-        print("No contract files found. Exiting gracefully.")
+        print("No contract files found to run. Exiting gracefully.")
         sys.exit(0)
 
     for lsr_file_path in contract_files:
@@ -56,7 +54,6 @@ def run_contract_validation_agent():
             print(f"--- Target URL: {target_url} ---")
             
             # --- DETERMINISTIC CHECK ---
-            # FIX APPLIED: Pass both lsr_data and target_url to the function
             current_response, current_latency = call_current_api(lsr_data, target_url) 
             regression_diff = get_regression_diff(lsr_data, current_response)
             
@@ -85,7 +82,7 @@ def run_contract_validation_agent():
                     print("\n--- 🚨 CRITICAL ERROR: TYPE CHANGE ---")
                     print(f"   Details: {json.dumps(critical_diff['TYPE_CHANGES'], indent=2)}")
 
-                # 3. Report Other Non-Critical Changes 
+                # 3. Report Other Non-Critical Changes
                 if all_other_changes:
                     print("\n--- ⚠️ SOFT WARNINGS (Concurrent Non-Breaking Changes) ---")
                     
@@ -158,5 +155,35 @@ def run_contract_validation_agent():
         print("🟢 FINAL BUILD STATUS: PASSED. All checks complete.")
         sys.exit(0)
 
+# -------------------------------------------------------------
+# EXECUTION START - Handles command line arguments for ALL/SPECIFIC execution
+# -------------------------------------------------------------
 if __name__ == "__main__":
-    run_contract_validation_agent()
+    
+    files_to_run = []
+    
+    if len(sys.argv) > 1:
+        # User provided a file name/path argument (Specific Execution)
+        arg_path = sys.argv[1]
+        
+        if os.path.exists(arg_path) and arg_path.endswith("_LSR.json"):
+            # Path is already correct (e.g., contracts/offers_LSR.json)
+            files_to_run = [arg_path]
+        else:
+            # Assume user provided just the filename (e.g., offers_LSR.json)
+            full_path = os.path.join(CONTRACTS_DIR, arg_path)
+            if os.path.exists(full_path):
+                files_to_run = [full_path]
+            else:
+                print(f"Error: Specified contract file '{arg_path}' not found in the {CONTRACTS_DIR} directory.")
+                sys.exit(1)
+    else:
+        # No argument provided: Run all contracts (Discovery Mode)
+        files_to_run = discover_contract_files(CONTRACTS_DIR)
+
+    if not files_to_run:
+        print("No contracts found to run. Exiting.")
+        sys.exit(0)
+
+    # Launch the synchronous run
+    run_contract_validation_agent(files_to_run)

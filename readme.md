@@ -34,4 +34,10 @@ pip install -r requirements.txt
 
 # 3. Run the Code
 python -m src.main
+
+# Assuming your file is named 'offers_LSR.json'
+python -m src.main contracts/offers_LSR.json
+
+# OR, if you are lazy and the file is in the contracts folder:
+python -m src.main offers_LSR.json 
 ```

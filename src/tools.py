@@ -3,7 +3,7 @@ import json
 import time
 from typing import Tuple, Dict, Any
 
-# --- File Loading Utility ---
+# --- File Loading Utility (Remains the same) ---
 
 def load_lsr_contract(file_path: str) -> Dict:
     """Loads the Latest Successful Response (LSR) contract from a JSON file."""
@@ -11,18 +11,18 @@ def load_lsr_contract(file_path: str) -> Dict:
         with open(file_path, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        # Raise an explicit error if the contract file is missing
         raise FileNotFoundError(f"LSR Contract file not found at: {file_path}. Did you create it?")
 
-# --- API Execution Tool (Corrected Signature) ---
+# --- API Execution Tool (Synchronous Request) ---
 
 def call_current_api(lsr_data: dict, endpoint_url: str) -> Tuple[Dict[str, Any], float]:
     """
-    Calls the API endpoint using dynamic request details from the contract.
+    Calls the API endpoint using dynamic request details from the contract using 
+    the synchronous 'requests' library.
     
     Args:
         lsr_data: The full loaded contract data containing request details.
-        endpoint_url: The target URL (used for the actual call).
+        endpoint_url: The target URL.
         
     Returns:
         tuple: (JSON response body, latency in seconds)
@@ -32,10 +32,7 @@ def call_current_api(lsr_data: dict, endpoint_url: str) -> Tuple[Dict[str, Any],
     request_meta = lsr_data.get("api_contract_meta", {})
     details = lsr_data.get("request_details", {})
     
-    # Defaults to GET if not specified in the contract
     method = request_meta.get("method", "GET").upper() 
-    
-    # Safely extracts headers and body (defaults to empty dicts/None)
     headers = details.get("headers", {})
     json_body = details.get("body")
     
@@ -65,7 +62,6 @@ def call_current_api(lsr_data: dict, endpoint_url: str) -> Tuple[Dict[str, Any],
         end_time = time.time()
         latency_sec = end_time - start_time
         
-        # Re-raise the error with context for main.py to handle
         status_code = response.status_code if 'response' in locals() else 'Connection Error'
         raise Exception(f"API Request Failed ({method} {endpoint_url} Status: {status_code}): {e}")
 

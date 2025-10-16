@@ -1,0 +1,9 @@
+# CORE LIBRARIES FOR AGENT INFRASTRUCTURE AND LOGIC
+requests>=2.31.0               # Standard library for making HTTP calls
+deepdiff>=6.2.3                # Essential for hierarchical JSON comparison
+pydantic>=2.7.1                # For type-safe data modeling
+
+# MACHINE LEARNING (For Anomaly Detection)
+scikit-learn>=1.4.2            # Used to implement the Isolation Forest model
+pandas>=2.2.2                  # Data handling for ML model training
+numpy>=1.26.4                  # Numerical operations for ML

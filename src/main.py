@@ -7,14 +7,16 @@ from typing import List
 from .validation.contract_engine import get_regression_diff
 from .validation.ml_detector import load_anomaly_model, check_performance_anomaly
 from .tools import call_current_api, load_lsr_contract 
-from .utils.logger import log_performance_data # <--- NEW: Logging Integration
+from .utils.logger import log_performance_data, load_historical_data_for_endpoint 
+from .validation.ml_detector import calculate_normal_range
 
 # --- CONFIGURATION ---
 CONTRACTS_DIR = "contracts"
 ANOMALY_MODEL_PATH = os.path.join("data", "anomaly_model.pkl") 
 
-# --- 1. File Discovery (Remains the same) ---
+# --- 1. File Discovery ---
 def discover_contract_files(directory: str) -> List[str]:
+    """Finds all JSON files ending with _LSR.json in the contracts directory."""
     full_paths = []
     if not os.path.isdir(directory):
         print(f"Error: Contract directory '{directory}' not found.")
@@ -54,17 +56,24 @@ def run_contract_validation_agent(contract_files: List[str]):
             print(f"URL: {target_url}")
             print("=============================================")
 
-            # --- DETERMINISTIC CHECK ---
+            # --- API EXECUTION ---
             current_response, current_latency = call_current_api(lsr_data, target_url) 
             
-            # 🚨 CRITICAL FIX: LOG DATA AFTER SUCCESSFUL API CALL
+            # --- PERFORMANCE LOGGING (Always Runs) ---
             log_performance_data(lsr_data, current_latency) 
             
+            # --- DETERMINISTIC CHECK ---
             regression_diff = get_regression_diff(lsr_data, current_response)
-            
             final_status = regression_diff.get("status", "PASS") 
             
-            # --- DIRECT REPORTING (Deterministic Result) ---
+            # --- ML ANALYSIS (Always Runs) ---
+            historical_df = load_historical_data_for_endpoint(lsr_data)
+            min_range_s, max_range_s = calculate_normal_range(anomaly_model, historical_df)
+            is_anomaly = check_performance_anomaly(anomaly_model, current_latency * 1000) 
+            
+            # --- START REPORTING BLOCK ---
+            
+            # A. STRUCTURAL (DETERMINISTIC) REPORT
             print("\n[DETERMINISTIC VALIDATION AUDIT]")
             
             if final_status == "FAIL":
@@ -87,7 +96,7 @@ def run_contract_validation_agent(contract_files: List[str]):
                     print("\n--- 🚨 CRITICAL ERROR: TYPE CHANGE ---")
                     print(f"   Details: {json.dumps(critical_diff['TYPE_CHANGES'], indent=2)}")
 
-                # 3. Report Other Non-Critical Changes
+                # 3. Report Other Non-Critical Changes 
                 if all_other_changes:
                     print("\n--- ⚠️ SOFT WARNINGS (Concurrent Non-Breaking Changes) ---")
                     
@@ -137,16 +146,15 @@ def run_contract_validation_agent(contract_files: List[str]):
                 print("✅ STATUS: PASSED (Strict Audit found zero deviation)")
 
 
-            # --- PROBABILISTIC CHECK (ML Result) ---
-            is_anomaly = check_performance_anomaly(anomaly_model, current_latency * 1000) 
+            # B. PROBABILISTIC (ML) REPORT (Always included for context)
+            print("\n[PROBABILISTIC VALIDATION]")
+            print(f"   Learned Normal Range: {min_range_s:.4f}s to {max_range_s:.4f}s")
             
-            if is_anomaly or final_status != "PASS":
-                print("\n[PROBABILISTIC VALIDATION]")
-                if is_anomaly:
-                     print(f"🔴 WARNING: Performance Anomaly Detected!")
-                     print(f"   Latency: {current_latency:.4f}s (Statistically abnormal for baseline)")
-                elif final_status != "PASS":
-                     print(f"🟢 Latency {current_latency:.4f}s is within expected range.")
+            if is_anomaly:
+                 print(f"🔴 WARNING: Performance Anomaly Detected!")
+                 print(f"   Latency: {current_latency:.4f}s (EXCEEDS the learned range).")
+            else:
+                 print(f"🟢 OK: Latency {current_latency:.4f}s is within expected range.")
             
             print("---------------------------------------------") 
 
@@ -155,7 +163,7 @@ def run_contract_validation_agent(contract_files: List[str]):
             overall_fail_count += 1
             print("---------------------------------------------")
 
-    # --- 3. FINAL EXECUTION RESULT (Remains the same) ---
+    # --- 3. FINAL EXECUTION RESULT ---
     print("\n=============================================")
     if overall_fail_count > 0:
         print(f"🔴 FINAL BUILD STATUS: FAILED. {overall_fail_count} contract(s) broken.")

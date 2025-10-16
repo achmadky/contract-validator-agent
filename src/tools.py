@@ -1,10 +1,11 @@
-import requests # Synchronous library for API calls
+# src/tools.py
+import requests 
 import json
 import time
+import hashlib
 from typing import Tuple, Dict, Any
 
-# --- File Loading Utility (Remains the same) ---
-
+# --- File Loading Utility ---
 def load_lsr_contract(file_path: str) -> Dict:
     """Loads the Latest Successful Response (LSR) contract from a JSON file."""
     try:
@@ -14,18 +15,9 @@ def load_lsr_contract(file_path: str) -> Dict:
         raise FileNotFoundError(f"LSR Contract file not found at: {file_path}. Did you create it?")
 
 # --- API Execution Tool (Synchronous Request) ---
-
 def call_current_api(lsr_data: dict, endpoint_url: str) -> Tuple[Dict[str, Any], float]:
     """
-    Calls the API endpoint using dynamic request details from the contract using 
-    the synchronous 'requests' library.
-    
-    Args:
-        lsr_data: The full loaded contract data containing request details.
-        endpoint_url: The target URL.
-        
-    Returns:
-        tuple: (JSON response body, latency in seconds)
+    Calls the API endpoint using dynamic request details from the contract.
     """
     
     # 1. DYNAMICALLY EXTRACT REQUEST DETAILS FROM LSR
@@ -41,18 +33,16 @@ def call_current_api(lsr_data: dict, endpoint_url: str) -> Tuple[Dict[str, Any],
     response_body = {}
     
     try:
-        # Use requests.request() to handle all methods dynamically
         response = requests.request(
             method=method,
             url=endpoint_url,
             headers=headers,
-            json=json_body, # Passed for POST/PUT/PATCH (will be None for GET)
+            json=json_body, 
             timeout=10 
         )
         
         response.raise_for_status() 
         
-        # Attempt to parse response body (handles 204 No Content)
         try:
             response_body = response.json()
         except requests.exceptions.JSONDecodeError:

@@ -3,18 +3,18 @@ import os
 import sys
 from typing import List
 
-# Corrected Imports: All imports are now synchronous
+# Corrected Imports
 from .validation.contract_engine import get_regression_diff
 from .validation.ml_detector import load_anomaly_model, check_performance_anomaly
 from .tools import call_current_api, load_lsr_contract 
+from .utils.logger import log_performance_data # <--- NEW: Logging Integration
 
 # --- CONFIGURATION ---
 CONTRACTS_DIR = "contracts"
-ANOMALY_MODEL_PATH = os.path.join("data", "anomaly_model.pkl")
+ANOMALY_MODEL_PATH = os.path.join("data", "anomaly_model.pkl") 
 
 # --- 1. File Discovery (Remains the same) ---
 def discover_contract_files(directory: str) -> List[str]:
-    """Finds all JSON files ending with _LSR.json in the contracts directory."""
     full_paths = []
     if not os.path.isdir(directory):
         print(f"Error: Contract directory '{directory}' not found.")
@@ -29,7 +29,7 @@ def discover_contract_files(directory: str) -> List[str]:
 # --- 2. Main Execution Loop ---
 def run_contract_validation_agent(contract_files: List[str]):
     
-    # 2.1 Load ML Model (Required for Probabilistic Check)
+    # 2.1 Load ML Model
     try:
         anomaly_model = load_anomaly_model(ANOMALY_MODEL_PATH) 
     except FileNotFoundError:
@@ -38,9 +38,8 @@ def run_contract_validation_agent(contract_files: List[str]):
         
     overall_fail_count = 0
     
-    # 2.2 Iterate through all discovered contracts
     if not contract_files:
-        print("No contract files found to run. Exiting gracefully.")
+        print("No contracts found to run. Exiting gracefully.")
         sys.exit(0)
 
     for lsr_file_path in contract_files:
@@ -50,11 +49,17 @@ def run_contract_validation_agent(contract_files: List[str]):
             target_url = lsr_data["api_contract_meta"]["target_url"]
             contract_name = os.path.basename(lsr_file_path)
             
-            print(f"\n--- Running Contract: {contract_name} ---")
-            print(f"--- Target URL: {target_url} ---")
-            
+            print(f"\n=============================================")
+            print(f"CONTRACT AUDIT: {contract_name}")
+            print(f"URL: {target_url}")
+            print("=============================================")
+
             # --- DETERMINISTIC CHECK ---
             current_response, current_latency = call_current_api(lsr_data, target_url) 
+            
+            # 🚨 CRITICAL FIX: LOG DATA AFTER SUCCESSFUL API CALL
+            log_performance_data(lsr_data, current_latency) 
+            
             regression_diff = get_regression_diff(lsr_data, current_response)
             
             final_status = regression_diff.get("status", "PASS") 
@@ -73,7 +78,7 @@ def run_contract_validation_agent(contract_files: List[str]):
                 # 1. Report Missing Keys (Critical)
                 missing_keys = critical_diff.get('MISSING_KEYS', {})
                 if missing_keys:
-                    print("\n--- 🚨 CRITICAL ERROR: MISSING PARAMETERS (BREAKING CHANGE) ---")
+                    print("\n--- 🚨 BREAKING CHANGE: PARAMETERS REMOVED ---")
                     for path in missing_keys: 
                         print(f"   🚨 PARAMETER REMOVED: {path}. Was expected in LSR but not found in current response.") 
                 
@@ -95,8 +100,8 @@ def run_contract_validation_agent(contract_files: List[str]):
                         print("\n🟡 VALUE CHANGES:")
                         for path, details in all_other_changes['values_changed'].items():
                             print(f"   ~ PARAMETER VALUE CHANGED: {path}")
-                            print(f"     Old Value: {details.get('old_value')}")
-                            print(f"     New Value: {details.get('new_value')}")
+                            print(f"     Old Value: {json.dumps(details.get('old_value'))}") 
+                            print(f"     New Value: {json.dumps(details.get('new_value'))}") 
                             
                     remaining_keys = [k for k in all_other_changes if k not in ['dictionary_item_added', 'values_changed']]
                     if remaining_keys:
@@ -121,8 +126,8 @@ def run_contract_validation_agent(contract_files: List[str]):
                     print("\n🟡 VALUE CHANGES (Soft Difference):")
                     for path, details in all_changes['values_changed'].items():
                         print(f"   ~ PARAMETER VALUE CHANGED: {path}")
-                        print(f"     Old Value: {details.get('old_value')}")
-                        print(f"     New Value: {details.get('new_value')}")
+                        print(f"     Old Value: {json.dumps(details.get('old_value'))}")
+                        print(f"     New Value: {json.dumps(details.get('new_value'))}")
                         
                 if any(key not in ['dictionary_item_added', 'values_changed'] for key in all_changes):
                     print("\n--- OTHER STRUCTURAL CHANGES (Technical Diff) ---")
@@ -135,18 +140,22 @@ def run_contract_validation_agent(contract_files: List[str]):
             # --- PROBABILISTIC CHECK (ML Result) ---
             is_anomaly = check_performance_anomaly(anomaly_model, current_latency * 1000) 
             
-            print("\n[PROBABILISTIC VALIDATION]")
-            if is_anomaly:
-                 print(f"🔴 WARNING: Performance Anomaly Detected!")
-                 print(f"   Latency: {current_latency:.4f}s (Statistically abnormal for baseline)")
-            else:
-                 print(f"🟢 OK: Latency {current_latency:.4f}s is within expected range.")
+            if is_anomaly or final_status != "PASS":
+                print("\n[PROBABILISTIC VALIDATION]")
+                if is_anomaly:
+                     print(f"🔴 WARNING: Performance Anomaly Detected!")
+                     print(f"   Latency: {current_latency:.4f}s (Statistically abnormal for baseline)")
+                elif final_status != "PASS":
+                     print(f"🟢 Latency {current_latency:.4f}s is within expected range.")
+            
+            print("---------------------------------------------") 
 
         except Exception as e:
-            print(f"UNEXPECTED ERROR processing {contract_name}: {type(e).__name__}: {e}")
+            print(f"❌ FATAL ERROR processing {contract_name}: {type(e).__name__}: {e}")
             overall_fail_count += 1
+            print("---------------------------------------------")
 
-    # --- 3. FINAL EXECUTION RESULT ---
+    # --- 3. FINAL EXECUTION RESULT (Remains the same) ---
     print("\n=============================================")
     if overall_fail_count > 0:
         print(f"🔴 FINAL BUILD STATUS: FAILED. {overall_fail_count} contract(s) broken.")
@@ -155,22 +164,16 @@ def run_contract_validation_agent(contract_files: List[str]):
         print("🟢 FINAL BUILD STATUS: PASSED. All checks complete.")
         sys.exit(0)
 
-# -------------------------------------------------------------
-# EXECUTION START - Handles command line arguments for ALL/SPECIFIC execution
-# -------------------------------------------------------------
 if __name__ == "__main__":
     
     files_to_run = []
     
     if len(sys.argv) > 1:
-        # User provided a file name/path argument (Specific Execution)
         arg_path = sys.argv[1]
         
         if os.path.exists(arg_path) and arg_path.endswith("_LSR.json"):
-            # Path is already correct (e.g., contracts/offers_LSR.json)
             files_to_run = [arg_path]
         else:
-            # Assume user provided just the filename (e.g., offers_LSR.json)
             full_path = os.path.join(CONTRACTS_DIR, arg_path)
             if os.path.exists(full_path):
                 files_to_run = [full_path]
@@ -178,12 +181,10 @@ if __name__ == "__main__":
                 print(f"Error: Specified contract file '{arg_path}' not found in the {CONTRACTS_DIR} directory.")
                 sys.exit(1)
     else:
-        # No argument provided: Run all contracts (Discovery Mode)
         files_to_run = discover_contract_files(CONTRACTS_DIR)
 
     if not files_to_run:
         print("No contracts found to run. Exiting.")
         sys.exit(0)
 
-    # Launch the synchronous run
     run_contract_validation_agent(files_to_run)

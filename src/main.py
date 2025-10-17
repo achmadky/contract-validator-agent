@@ -5,16 +5,17 @@ from typing import List
 
 # Corrected Imports
 from .validation.contract_engine import get_regression_diff
-from .validation.ml_detector import load_anomaly_model, check_performance_anomaly
+from .validation.ml_detector import load_anomaly_model, check_performance_anomaly, calculate_normal_range
 from .tools import call_current_api, load_lsr_contract 
 from .utils.logger import log_performance_data, load_historical_data_for_endpoint 
-from .validation.ml_detector import calculate_normal_range
 
 # --- CONFIGURATION ---
 CONTRACTS_DIR = "contracts"
 ANOMALY_MODEL_PATH = os.path.join("data", "anomaly_model.pkl") 
+REPORTS_OUTPUT_DIR = "reports_output" # Directory where temporary files are saved
+PATCH_TARGET_DIR = "contracts_patch" # Directory where final patch files are saved
 
-# --- 1. File Discovery ---
+# --- 1. File Discovery (Remains the same) ---
 def discover_contract_files(directory: str) -> List[str]:
     """Finds all JSON files ending with _LSR.json in the contracts directory."""
     full_paths = []
@@ -43,37 +44,72 @@ def run_contract_validation_agent(contract_files: List[str]):
     if not contract_files:
         print("No contracts found to run. Exiting gracefully.")
         sys.exit(0)
+    
+    # Prepare the output directory for temporary files
+    os.makedirs(REPORTS_OUTPUT_DIR, exist_ok=True)
+    os.makedirs(PATCH_TARGET_DIR, exist_ok=True)
 
     for lsr_file_path in contract_files:
+        
+        # Initialize loop-specific variables
+        contract_name = os.path.basename(lsr_file_path)
+        base_name = contract_name.replace('.json', '')
+        
+        # CORRECT PATH: Temporary CR file goes into REPORTS_OUTPUT_DIR
+        temp_cr_filename = f"{base_name}_CR.json"
+        temp_cr_path = os.path.join(REPORTS_OUTPUT_DIR, temp_cr_filename) 
+        
+        # --- NEW: CHECK FOR EXISTING PATCH FILE (Skip Logic) ---
+        patch_filename = f"{base_name}_patcher.json"
+        patch_filepath = os.path.join(PATCH_TARGET_DIR, patch_filename)
+        
+        if os.path.exists(patch_filepath):
+            print(f"\n--- SKIPPED: {contract_name} ---")
+            print(f"⚠️ Warning: Patch file already exists in {PATCH_TARGET_DIR}. Delete it to re-run the audit.")
+            continue
         
         try:
             lsr_data = load_lsr_contract(lsr_file_path)
             target_url = lsr_data["api_contract_meta"]["target_url"]
-            contract_name = os.path.basename(lsr_file_path)
             
             print(f"\n=============================================")
             print(f"CONTRACT AUDIT: {contract_name}")
             print(f"URL: {target_url}")
             print("=============================================")
 
-            # --- API EXECUTION ---
+            # --- API EXECUTION & LATENCY MEASUREMENT ---
             current_response, current_latency = call_current_api(lsr_data, target_url) 
             
-            # --- PERFORMANCE LOGGING (Always Runs) ---
+            # 🚨 LOG PERFORMANCE DATA (Feedback Loop)
             log_performance_data(lsr_data, current_latency) 
             
             # --- DETERMINISTIC CHECK ---
             regression_diff = get_regression_diff(lsr_data, current_response)
             final_status = regression_diff.get("status", "PASS") 
             
-            # --- ML ANALYSIS (Always Runs) ---
+            # --- ML ANALYSIS (Performance Check) ---
             historical_df = load_historical_data_for_endpoint(lsr_data)
             min_range_s, max_range_s = calculate_normal_range(anomaly_model, historical_df)
             is_anomaly = check_performance_anomaly(anomaly_model, current_latency * 1000) 
             
+            # --- CONDITIONAL CR FILE CREATION LOGIC (STRICTLY FOR PATCHING) ---
+            
+            diff_to_check = regression_diff.get('critical_diff', {}) or regression_diff.get('all_changes', {})
+            
+            # FIX: The CR file is only needed if there is a FAIL OR if keys were ADDED (requires patching).
+            needs_cr_file = (
+                final_status == "FAIL" or 
+                'dictionary_item_added' in diff_to_check
+            )
+
+            if needs_cr_file:
+                # Create the temporary CR file if structural or critical issues exist
+                cr_wrapper_data = {"latest_successful_response": current_response}
+                with open(temp_cr_path, 'w') as f:
+                    json.dump(cr_wrapper_data, f, indent=2)
+            
             # --- START REPORTING BLOCK ---
             
-            # A. STRUCTURAL (DETERMINISTIC) REPORT
             print("\n[DETERMINISTIC VALIDATION AUDIT]")
             
             if final_status == "FAIL":
@@ -117,12 +153,18 @@ def run_contract_validation_agent(contract_files: List[str]):
                         print("\n--- OTHER STRUCTURAL CHANGES (Technical Diff) ---")
                         other_technical_diff = {k: all_other_changes[k] for k in remaining_keys}
                         print(f"{json.dumps(other_technical_diff, indent=2)}") 
+                
+                # Provide fix command after a FAIL
+                print(f"\n💡 ACTION: Run 'python patch_contract.py {contract_name}' to apply fixes locally.")
             
             elif final_status == "PASS_WITH_WARNING":
-                print("⚠️ STATUS: PASSED WITH WARNING (Contract Drift)")
-                print(f"   Reason: {regression_diff.get('reason')}")
                 
                 all_changes = regression_diff.get('all_changes', {})
+                has_structural_additions = 'dictionary_item_added' in all_changes
+
+                # Print header and details for any change
+                print("⚠️ STATUS: PASSED WITH WARNING (Contract Drift)")
+                print(f"   Reason: {regression_diff.get('reason')}")
                 
                 print("\n--- ALL DIFFERENCES FOUND (Requires Audit) ---")
                 
@@ -140,13 +182,17 @@ def run_contract_validation_agent(contract_files: List[str]):
                         
                 if any(key not in ['dictionary_item_added', 'values_changed'] for key in all_changes):
                     print("\n--- OTHER STRUCTURAL CHANGES (Technical Diff) ---")
-                    print(f"{json.dumps(all_changes, indent=2)}") 
+                    print(f"{json.dumps(all_changes, indent=2)}")
+                    
+                # Provide fix command only if structural additions were found
+                if has_structural_additions:
+                    print(f"\n💡 ACTION: Run 'python patch_contract.py {contract_name}' to apply additions locally.")
 
             else:
                 print("✅ STATUS: PASSED (Strict Audit found zero deviation)")
 
 
-            # B. PROBABILISTIC (ML) REPORT (Always included for context)
+            # --- PROBABILISTIC (ML) REPORT ---
             print("\n[PROBABILISTIC VALIDATION]")
             print(f"   Learned Normal Range: {min_range_s:.4f}s to {max_range_s:.4f}s")
             
@@ -159,6 +205,9 @@ def run_contract_validation_agent(contract_files: List[str]):
             print("---------------------------------------------") 
 
         except Exception as e:
+            # Clean up the temporary file on error before exiting loop
+            if os.path.exists(temp_cr_path):
+                os.remove(temp_cr_path)
             print(f"❌ FATAL ERROR processing {contract_name}: {type(e).__name__}: {e}")
             overall_fail_count += 1
             print("---------------------------------------------")
@@ -177,6 +226,7 @@ if __name__ == "__main__":
     files_to_run = []
     
     if len(sys.argv) > 1:
+        # User provided a file name/path argument (Specific Execution)
         arg_path = sys.argv[1]
         
         if os.path.exists(arg_path) and arg_path.endswith("_LSR.json"):
@@ -189,6 +239,7 @@ if __name__ == "__main__":
                 print(f"Error: Specified contract file '{arg_path}' not found in the {CONTRACTS_DIR} directory.")
                 sys.exit(1)
     else:
+        # No argument provided: Run all contracts (Discovery Mode)
         files_to_run = discover_contract_files(CONTRACTS_DIR)
 
     if not files_to_run:

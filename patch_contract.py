@@ -4,7 +4,7 @@ import os
 import sys
 import argparse
 from deepdiff import DeepDiff
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 # --- CONFIGURATION ---
 CONTRACTS_DIR = "contracts"
@@ -54,7 +54,8 @@ def run_patch_audit_for_file(lsr_filepath: str, contract_filename: str):
     """
     
     # 1. Define Paths for Temporary Data
-    temp_cr_filename = f"{contract_filename.replace('.json', '')}_CR.json"
+    base_name = contract_filename.replace('.json', '')
+    temp_cr_filename = f"{base_name}_CR.json"
     temp_cr_path = os.path.join(REPORTS_OUTPUT_DIR, temp_cr_filename)
     original_lsr_filepath = os.path.join(CONTRACTS_DIR, contract_filename)
 
@@ -136,7 +137,7 @@ def main():
         description="CLI tool to perform dynamic/mass self-healing on contract files."
     )
     parser.add_argument(
-        "contract_filename",
+        "target",
         nargs='?', 
         type=str,
         help="Specific filename to patch (e.g., offers_LSR.json) OR leave blank to patch all contracts."
@@ -145,23 +146,39 @@ def main():
     args = parser.parse_args()
     
     # 1. Determine which files to run
-    files_to_patch = []
+    files_to_patch: List[Tuple[str, str]] = [] # List of (full_path, filename)
     
-    if args.contract_filename:
+    if args.target:
         # Specific Execution Mode
-        target_filename = args.contract_filename
+        target_filename = args.target
         full_path = os.path.join(CONTRACTS_DIR, target_filename)
         
         if os.path.exists(full_path) and target_filename.endswith("_LSR.json"):
             files_to_patch = [(full_path, target_filename)]
         else:
-            print(f"Error: Specified contract file '{args.contract_filename}' not found or invalid.")
+            print(f"Error: Specified contract file '{args.target}' not found or invalid.")
             sys.exit(1)
             
     else:
-        # Mass Execution Mode (Run All)
-        all_paths = discover_contract_files(CONTRACTS_DIR)
-        files_to_patch = [(p, os.path.basename(p)) for p in all_paths]
+        # Mass Execution Mode (The Fix)
+        if not os.path.isdir(REPORTS_OUTPUT_DIR):
+            print(f"Error: Cannot run mass patch. '{REPORTS_OUTPUT_DIR}' directory not found. Run 'python -m src.main' first.")
+            sys.exit(1)
+
+        # Loop through the files in the REPORTS_OUTPUT_DIR (where the CR files are saved)
+        for temp_cr_filename in os.listdir(REPORTS_OUTPUT_DIR):
+            if temp_cr_filename.endswith("_CR.json"):
+                
+                # Infer the original contract filename (e.g., offers_LSR.json_CR.json -> offers_LSR.json)
+                original_contract_filename = temp_cr_filename.replace('_CR.json', '.json')
+                original_contract_path = os.path.join(CONTRACTS_DIR, original_contract_filename)
+
+                # Check if the ORIGINAL contract still exists (it might have been deleted)
+                if os.path.exists(original_contract_path):
+                    files_to_patch.append((original_contract_path, original_contract_filename))
+                else:
+                    print(f"Warning: Orphan CR file found ({temp_cr_filename}). Original contract missing. Deleting CR file.")
+                    delete_temp_cr_file(original_contract_filename)
 
     if not files_to_patch:
         print("No contracts found to patch. Exiting.")
@@ -170,7 +187,7 @@ def main():
     # 2. Execute patching loop
     total_failures = 0
     
-    print(f"--- Starting Contract Patching in {'MASS MODE' if not args.contract_filename else 'SPECIFIC MODE'} ---")
+    print(f"--- Starting Contract Patching in {'MASS MODE' if not args.target else 'SPECIFIC MODE'} ---")
     
     for full_path, filename in files_to_patch:
         status_code = run_patch_audit_for_file(full_path, filename)

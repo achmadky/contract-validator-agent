@@ -92,9 +92,18 @@ def run_contract_validation_agent(contract_files: List[str]):
             min_range_s, max_range_s = calculate_normal_range(anomaly_model, historical_df)
             is_anomaly = check_performance_anomaly(anomaly_model, current_latency * 1000) 
             
-            # --- CONDITIONAL CR FILE CREATION LOGIC ---
-            if final_status != "PASS":
-                # Only create the temporary CR file if there is a FAIL or WARNING status
+            # --- CONDITIONAL CR FILE CREATION LOGIC (STRICTLY FOR PATCHING) ---
+            
+            diff_to_check = regression_diff.get('critical_diff', {}) or regression_diff.get('all_changes', {})
+            
+            # FIX: The CR file is only needed if there is a FAIL OR if keys were ADDED (requires patching).
+            needs_cr_file = (
+                final_status == "FAIL" or 
+                'dictionary_item_added' in diff_to_check
+            )
+
+            if needs_cr_file:
+                # Create the temporary CR file if structural or critical issues exist
                 cr_wrapper_data = {"latest_successful_response": current_response}
                 with open(temp_cr_path, 'w') as f:
                     json.dump(cr_wrapper_data, f, indent=2)
@@ -149,10 +158,13 @@ def run_contract_validation_agent(contract_files: List[str]):
                 print(f"\n💡 ACTION: Run 'python patch_contract.py {contract_name}' to apply fixes locally.")
             
             elif final_status == "PASS_WITH_WARNING":
-                print("⚠️ STATUS: PASSED WITH WARNING (Contract Drift)")
-                print(f"   Reason: {regression_diff.get('reason')}")
                 
                 all_changes = regression_diff.get('all_changes', {})
+                has_structural_additions = 'dictionary_item_added' in all_changes
+
+                # Print header and details for any change
+                print("⚠️ STATUS: PASSED WITH WARNING (Contract Drift)")
+                print(f"   Reason: {regression_diff.get('reason')}")
                 
                 print("\n--- ALL DIFFERENCES FOUND (Requires Audit) ---")
                 
@@ -172,8 +184,9 @@ def run_contract_validation_agent(contract_files: List[str]):
                     print("\n--- OTHER STRUCTURAL CHANGES (Technical Diff) ---")
                     print(f"{json.dumps(all_changes, indent=2)}")
                     
-                # Provide fix command after a WARNING
-                print(f"\n💡 ACTION: Run 'python patch_contract.py {contract_name}' to apply additions locally.")
+                # Provide fix command only if structural additions were found
+                if has_structural_additions:
+                    print(f"\n💡 ACTION: Run 'python patch_contract.py {contract_name}' to apply additions locally.")
 
             else:
                 print("✅ STATUS: PASSED (Strict Audit found zero deviation)")

@@ -30,3 +30,6 @@ data/*.csv         # Raw/Historical data files
 
 # Ensure this line is in your .gitignore file
 .DS_Store
+
+# Reports
+reports/

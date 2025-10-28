@@ -63,6 +63,17 @@ class HTMLReporter:
                 summary {{ cursor: pointer; font-weight: 600; font-size: 13px; }}
                 .hint {{ font-size: 12px; color: var(--text-muted); margin-top: 6px; }}
                 .list {{ margin: 0; padding-left: 18px; }}
+                /* JSON syntax highlighting */
+                .json-block {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; background-color: #f5f5f5; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; white-space: pre; }}
+                .json-key {{ color: #0451a5; }}
+                .json-string {{ color: #a31515; }}
+                .json-number {{ color: #098658; }}
+                .json-boolean {{ color: #0000ff; }}
+                .json-null {{ color: #0000ff; }}
+                .json-punctuation {{ color: #000000; }}
+                .line-removed {{ background-color: var(--fail-bg); color: var(--fail); }}
+                .line-added {{ background-color: var(--pass-bg); color: var(--pass); }}
+                .line-changed {{ background-color: var(--warn-bg); color: var(--warn); }}
                 /* Toggle controls removed */
             </style>
         </head>
@@ -162,6 +173,15 @@ class HTMLReporter:
                     --border: #eee;
                     --bg-soft: #fafafa;
                     --text-muted: #666;
+                    --bg-card: #ffffff;
+                    --pass: #2e7d32;
+                    --pass-bg: #dff2e1;
+                    --warn: #b26a00;
+                    --warn-bg: #ffefdb;
+                    --fail: #c62828;
+                    --fail-bg: #fee6e6;
+                    --unknown: #6b7280;
+                    --unknown-bg: #f0f2f5;
                 }}
                 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; line-height: 1.6; color: #333; max-width: 980px; margin: 0 auto; padding: 20px; }}
                 .section {{ margin-bottom: 18px; border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--bg-card); box-shadow: 0 1px 2px rgba(0,0,0,0.03); }}
@@ -273,89 +293,175 @@ class HTMLReporter:
         html = '<div class="section">'
         html += '<h2 class="section-title">Deterministic Validation</h2>'
 
+        # If no differences found, show a simple message
+        if not critical_diff and not all_changes:
+            html += '<p style="margin:6px 0">No differences detected. Contract is fully compatible.</p>'
+            html += '</div>'
+            return html
+
+        # Generate side-by-side JSON view with single-line parameters
+        if lsr_sample is not None or current_sample is not None:
+            html += '<h3 style="margin:6px 0">JSON Response with Highlighted Differences</h3>'
+            html += '<div style="display:flex; gap:20px;">'
+            
+            # Track paths for different change types
+            missing_keys = critical_diff.get("MISSING_KEYS", []) if critical_diff else []
+            type_changes = critical_diff.get("TYPE_CHANGES", {}) if critical_diff else {}
+            added_keys = all_changes.get("dictionary_item_added", []) if all_changes else []
+            value_changes = all_changes.get("values_changed", {}) if all_changes else {}
+            
+            # Left side: LSR (baseline)
+            html += '<div style="flex:1">'
+            html += '<p style="margin:0 0 4px; font-weight:600">LSR (Baseline)</p>'
+            html += '<div class="json-block">'
+            if lsr_sample is not None:
+                html = self._format_json_as_single_lines(html, lsr_sample, missing_keys, type_changes, value_changes, "lsr")
+            else:
+                html += '<em style="color:var(--text-muted)">No data</em>'
+            html += '</div></div>'
+            
+            # Right side: Current Response
+            html += '<div style="flex:1">'
+            html += '<p style="margin:0 0 4px; font-weight:600">Current Response</p>'
+            html += '<div class="json-block">'
+            if current_sample is not None:
+                html = self._format_json_as_single_lines(html, current_sample, added_keys, type_changes, value_changes, "current")
+            else:
+                html += '<em style="color:var(--text-muted)">No data</em>'
+            html += '</div></div>'
+            
+            html += '</div>'
+        
+        # Add explanation section
+        html += '<h3 style="margin:12px 0 6px">Explanation of Changes</h3>'
+        
         # Breaking changes
         if critical_diff:
-            html += '<div class="sub-title">Strict backward compatibility checks</div>'
-            html += '<h3 style="margin:6px 0">Breaking Changes</h3>'
+            html += '<div class="diff-item diff-removed">'
+            html += '<h4 style="margin:0 0 6px">Breaking Changes</h4>'
+            html += '<ul class="list">'
+            
             # Missing keys
             if "MISSING_KEYS" in critical_diff:
-                html += '<div class="diff-item diff-removed">'
-                html += '<h4 style="margin:0 0 6px">Missing Keys</h4>'
-                html += '<ul class="list">'
                 for item in critical_diff["MISSING_KEYS"]:
                     html += f'<li><code class="code">{item}</code></li>'
-                html += '</ul>'
-                # Collapsible inline snippets for missing
-                if lsr_sample is not None and critical_diff["MISSING_KEYS"]:
-                    snippets: List[str] = []
-                    for path in critical_diff["MISSING_KEYS"]:
-                        expected = self._resolve_path_value(lsr_sample, path)
-                        snippets.append(self._format_snippet(path, expected, None, highlight="missing"))
-                    html += f'<details><summary>Show expected JSON snippets ({len(snippets)})</summary>' + "".join(snippets) + '</details>'
-                html += '<div class="hint">Subjective: Backfill missing fields or version the API to avoid breaking clients.</div>'
-                html += '</div>'
+            
             # Type changes
             if "TYPE_CHANGES" in critical_diff:
-                html += '<div class="diff-item diff-changed">'
-                html += '<h4 style="margin:0 0 6px">Type Changes</h4>'
-                html += '<table>'
-                html += '<tr><th>Path</th><th>Old Type</th><th>New Type</th></tr>'
                 for path, change in critical_diff["TYPE_CHANGES"].items():
                     old_type = change.get("old_type", "unknown")
                     new_type = change.get("new_type", "unknown")
-                    html += f'<tr><td><code class="code">{path}</code></td><td>{old_type}</td><td>{new_type}</td></tr>'
-                html += '</table>'
-                html += '<div class="hint">Subjective: Prefer adapters or versioned responses for type changes.</div>'
-                html += '</div>'
-
+                    html += f'<li><code class="code">{path}</code>: Type changed from {old_type} to {new_type}</li>'
+            
+            html += '</ul>'
+            html += '</div>'
+        
         # Other changes
         if all_changes:
-            html += '<h3 style="margin:12px 0 6px">Other Changes</h3>'
             # Added keys
             if "dictionary_item_added" in all_changes:
                 html += '<div class="diff-item diff-added">'
-                html += '<h4 style="margin:0 0 6px">Added Keys</h4>'
+                html += '<h4 style="margin:0 0 6px">New Parameters</h4>'
                 html += '<ul class="list">'
                 for item in all_changes["dictionary_item_added"]:
                     html += f'<li><code class="code">{item}</code></li>'
                 html += '</ul>'
-                # Collapsible inline snippets
-                if current_sample is not None and all_changes["dictionary_item_added"]:
-                    add_snippets: List[str] = []
-                    for path in all_changes["dictionary_item_added"]:
-                        new_val = self._resolve_path_value(current_sample, path)
-                        add_snippets.append(self._format_snippet(path, None, new_val, highlight="added"))
-                    html += f'<details><summary>Show new JSON snippets ({len(add_snippets)})</summary>' + "".join(add_snippets) + '</details>'
-                html += '<div class="hint">Subjective: If intentional, patch and document additions for clarity.</div>'
                 html += '</div>'
+            
             # Value changes
             if "values_changed" in all_changes:
                 html += '<div class="diff-item diff-changed">'
                 html += '<h4 style="margin:0 0 6px">Value Changes</h4>'
-                html += '<table>'
-                html += '<tr><th>Path</th><th>Old</th><th>New</th></tr>'
+                html += '<ul class="list">'
                 for path, change in all_changes["values_changed"].items():
                     old_value = change.get("old_value", "")
                     new_value = change.get("new_value", "")
-                    html += f'<tr><td><code class="code">{path}</code></td><td>{old_value}</td><td>{new_value}</td></tr>'
-                html += '</table>'
-                # Collapsible inline diffs
-                vc_snippets: List[str] = []
-                for path, change in all_changes["values_changed"].items():
-                    old_value = change.get("old_value")
-                    new_value = change.get("new_value")
-                    vc_snippets.append(self._format_snippet(path, old_value, new_value, highlight="changed"))
-                if vc_snippets:
-                    html += f'<details><summary>Show inline diffs ({len(vc_snippets)})</summary>' + "".join(vc_snippets) + '</details>'
-                html += '<div class="hint">Subjective: Confirm rule changes; update docs/contract or revert upstream.</div>'
+                    html += f'<li><code class="code">{path}</code>: Changed from {old_value} to {new_value}</li>'
+                html += '</ul>'
                 html += '</div>'
-
-        if not critical_diff and not all_changes:
-            html += '<p style="margin:6px 0">No differences detected. Contract is fully compatible.</p>'
-
+        
         html += '</div>'
         return html
-
+            
+    def _format_json_as_single_lines(self, html, json_obj, special_keys1, special_keys2, special_keys3, side):
+        """Format JSON with each parameter on a single line"""
+        if isinstance(json_obj, dict):
+            html += '{\n'
+            
+            # Process each key-value pair
+            items = list(json_obj.items())
+            for i, (key, value) in enumerate(items):
+                # Determine if this key is special
+                line_class = ""
+                if side == "lsr":
+                    # For LSR side, highlight missing keys and changed values
+                    for path in special_keys1:  # missing_keys
+                        if path.endswith(key) or path == key:
+                            line_class = "line-removed"
+                            break
+                    if not line_class:
+                        for path in special_keys2:  # type_changes
+                            if path.endswith(key) or path == key:
+                                line_class = "line-changed"
+                                break
+                    if not line_class:
+                        for path in special_keys3:  # value_changes
+                            if path.endswith(key) or path == key:
+                                line_class = "line-changed"
+                                break
+                else:  # current
+                    # For current side, highlight added keys and changed values
+                    for path in special_keys1:  # added_keys
+                        if path.endswith(key) or path == key:
+                            line_class = "line-added"
+                            break
+                    if not line_class:
+                        for path in special_keys2:  # type_changes
+                            if path.endswith(key) or path == key:
+                                line_class = "line-changed"
+                                break
+                    if not line_class:
+                        for path in special_keys3:  # value_changes
+                            if path.endswith(key) or path == key:
+                                line_class = "line-changed"
+                                break
+                
+                # Format the value as a string
+                if isinstance(value, (dict, list)):
+                    value_str = json.dumps(value, ensure_ascii=False)
+                else:
+                    value_str = json.dumps(value, ensure_ascii=False)
+                
+                # Create the line with proper comma
+                line = f'  "{key}": {value_str}{", " if i < len(items) - 1 else ""}'
+                
+                # Apply syntax highlighting and line highlighting
+                html += self._format_json_with_syntax_highlighting(line, line_class) + '\n'
+            
+            html += '}\n'
+        elif isinstance(json_obj, list):
+            html += '[\n'
+            
+            # Process each item in the list
+            for i, item in enumerate(json_obj):
+                if isinstance(item, (dict, list)):
+                    value_str = json.dumps(item, ensure_ascii=False)
+                else:
+                    value_str = json.dumps(item, ensure_ascii=False)
+                
+                # Create the line with proper comma
+                line = f'  {value_str}{", " if i < len(json_obj) - 1 else ""}'
+                
+                # Apply syntax highlighting
+                html += self._format_json_with_syntax_highlighting(line) + '\n'
+            
+            html += ']\n'
+        else:
+            # For primitive values
+            html += json.dumps(json_obj, ensure_ascii=False) + '\n'
+        
+        return html
+            
     def _generate_performance_section(self, performance_data: Dict[str, Any]) -> str:
         is_anomaly = performance_data.get("is_anomaly", False)
         current_latency = performance_data.get("current_latency", 0)
@@ -442,6 +548,32 @@ class HTMLReporter:
             return f"<div class='diff-item diff-added'><strong>Added</strong> <code class='code'>{path}</code><pre class='code-block'>\"{key_name}\": {to_json(new_val)}</pre></div>"
         return ""
 
+    def _format_json_with_syntax_highlighting(self, json_line, line_class=""):
+        import re
+        # Apply syntax highlighting to JSON elements (non-anchored to match more cases)
+        # Highlight keys
+        json_line = re.sub(r'(\"(?:\\.|[^\"\\])*\")\s*:', r'<span class="json-key">\1</span>:', json_line)
+
+        # Highlight string values
+        json_line = re.sub(r':\s*(\"(?:\\.|[^\"\\])*\")', r': <span class="json-string">\1</span>', json_line)
+
+        # Highlight numbers
+        json_line = re.sub(r':\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)', r': <span class="json-number">\1</span>', json_line)
+
+        # Highlight booleans
+        json_line = re.sub(r':\s*(true|false)', r': <span class="json-boolean">\1</span>', json_line)
+
+        # Highlight null
+        json_line = re.sub(r':\s*(null)', r': <span class="json-null">\1</span>', json_line)
+
+        # Highlight punctuation
+        json_line = re.sub(r'([{}\[\],])', r'<span class="json-punctuation">\1</span>', json_line)
+
+        # Apply line highlighting if specified
+        if line_class:
+            return f'<div class="{line_class}">{json_line}</div>'
+        return json_line
+        
     def _last_key_from_path(self, path: str) -> str:
         import re
         m = re.findall(r"\['([^']+)'\]", path)

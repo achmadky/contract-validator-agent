@@ -65,6 +65,8 @@ class HTMLReporter:
                 .list {{ margin: 0; padding-left: 18px; }}
                 /* JSON syntax highlighting */
                 .json-block {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; background-color: #f5f5f5; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; white-space: pre; }}
+                .json-box {{ border: 1px solid #e0e0e0; border-radius: 4px; padding: 4px; margin: 2px 0; background-color: #fafafa; }}
+                .json-line {{ display: block; }}
                 .json-key {{ color: #0451a5; }}
                 .json-string {{ color: #a31515; }}
                 .json-number {{ color: #098658; }}
@@ -74,6 +76,10 @@ class HTMLReporter:
                 .line-removed {{ background-color: var(--fail-bg); color: var(--fail); }}
                 .line-added {{ background-color: var(--pass-bg); color: var(--pass); }}
                 .line-changed {{ background-color: var(--warn-bg); color: var(--warn); }}
+                /* Response boxes and layout */
+                .side-by-side {{ display: flex; gap: 20px; align-items: flex-start; }}
+                .response-box {{ flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background-color: var(--bg-soft); }}
+                .box-title {{ margin: 0 0 6px; font-weight: 600; font-size: 13px; color: #333; }}
                 /* Toggle controls removed */
             </style>
         </head>
@@ -302,7 +308,7 @@ class HTMLReporter:
         # Generate side-by-side JSON view with single-line parameters
         if lsr_sample is not None or current_sample is not None:
             html += '<h3 style="margin:6px 0">JSON Response with Highlighted Differences</h3>'
-            html += '<div style="display:flex; gap:20px;">'
+            html += '<div class="side-by-side">'
             
             # Track paths for different change types
             missing_keys = critical_diff.get("MISSING_KEYS", []) if critical_diff else []
@@ -311,8 +317,8 @@ class HTMLReporter:
             value_changes = all_changes.get("values_changed", {}) if all_changes else {}
             
             # Left side: LSR (baseline)
-            html += '<div style="flex:1">'
-            html += '<p style="margin:0 0 4px; font-weight:600">LSR (Baseline)</p>'
+            html += '<div class="response-box">'
+            html += '<p class="box-title">LSR (Baseline)</p>'
             html += '<div class="json-block">'
             if lsr_sample is not None:
                 html = self._format_json_as_single_lines(html, lsr_sample, missing_keys, type_changes, value_changes, "lsr")
@@ -321,16 +327,20 @@ class HTMLReporter:
             html += '</div></div>'
             
             # Right side: Current Response
-            html += '<div style="flex:1">'
-            html += '<p style="margin:0 0 4px; font-weight:600">Current Response</p>'
+            html += '<div class="response-box">'
+            html += '<p class="box-title">Current Response</p>'
             html += '<div class="json-block">'
             if current_sample is not None:
                 html = self._format_json_as_single_lines(html, current_sample, added_keys, type_changes, value_changes, "current")
             else:
                 html += '<em style="color:var(--text-muted)">No data</em>'
             html += '</div></div>'
-            
+
             html += '</div>'
+
+            # Optional unified (git-like) diff view
+            html += '<h3 style="margin:12px 0 6px">Unified Diff (git-like)</h3>'
+            html += self._generate_unified_diff_view(lsr_sample, current_sample)
         
         # Add explanation section
         html += '<h3 style="margin:12px 0 6px">Explanation of Changes</h3>'
@@ -386,7 +396,7 @@ class HTMLReporter:
     def _format_json_as_single_lines(self, html, json_obj, special_keys1, special_keys2, special_keys3, side):
         """Format JSON with each parameter on a single line"""
         if isinstance(json_obj, dict):
-            html += '{\n'
+            html += '<div class="json-box">\n'
             
             # Process each key-value pair
             items = list(json_obj.items())
@@ -438,9 +448,9 @@ class HTMLReporter:
                 # Apply syntax highlighting and line highlighting
                 html += self._format_json_with_syntax_highlighting(line, line_class) + '\n'
             
-            html += '}\n'
+            html += '</div>\n'
         elif isinstance(json_obj, list):
-            html += '[\n'
+            html += '<div class="json-box">\n'
             
             # Process each item in the list
             for i, item in enumerate(json_obj):
@@ -455,11 +465,114 @@ class HTMLReporter:
                 # Apply syntax highlighting
                 html += self._format_json_with_syntax_highlighting(line) + '\n'
             
-            html += ']\n'
+            html += '</div>\n'
         else:
             # For primitive values
-            html += json.dumps(json_obj, ensure_ascii=False) + '\n'
+            html += '<div class="json-box">' + json.dumps(json_obj, ensure_ascii=False) + '</div>\n'
         
+        return html
+
+    def _flatten_json(self, obj: Any, prefix: str = "") -> Dict[str, str]:
+        """Flatten a JSON-like object into path -> serialized value mappings.
+        Paths follow DeepDiff-style (e.g., root['a']['b'][0])."""
+        import json as _json
+        flat: Dict[str, str] = {}
+
+        def _walk(value: Any, path: str):
+            if isinstance(value, dict):
+                for k, v in value.items():
+                    _walk(v, f"{path}['{k}']")
+            elif isinstance(value, list):
+                for i, v in enumerate(value):
+                    _walk(v, f"{path}[{i}]")
+            else:
+                try:
+                    flat[path] = _json.dumps(value, ensure_ascii=False)
+                except Exception:
+                    flat[path] = str(value)
+
+        base = prefix or "root"
+        _walk(obj, base)
+        return flat
+
+    def _generate_unified_diff_view(self, lsr_sample: Optional[Union[Dict[str, Any], List[Any]]],
+                                    current_sample: Optional[Union[Dict[str, Any], List[Any]]]) -> str:
+        """Produce a git-like unified diff where each top-level parameter is one line.
+        - Unchanged lines have no symbol (context).
+        - Removed lines start with '-' and are red.
+        - Added lines start with '+' and are green.
+        - Changed lines show '-' and '+' pair in yellow.
+        Fallback to flattened diff if inputs are not both dicts/lists.
+        """
+        import json as _json
+
+        def _serialize(v: Any) -> str:
+            try:
+                return _json.dumps(v, ensure_ascii=False)
+            except Exception:
+                return str(v)
+
+        html = '<div class="response-box"><div class="json-block">'
+
+        # Dict vs Dict: compare top-level keys only
+        if isinstance(lsr_sample, dict) or isinstance(current_sample, dict):
+            l_dict = lsr_sample if isinstance(lsr_sample, dict) else {}
+            c_dict = current_sample if isinstance(current_sample, dict) else {}
+            all_keys = sorted(set(l_dict.keys()) | set(c_dict.keys()))
+            for key in all_keys:
+                l_has = key in l_dict
+                c_has = key in c_dict
+                l_val = _serialize(l_dict[key]) if l_has else None
+                c_val = _serialize(c_dict[key]) if c_has else None
+                if l_has and not c_has:
+                    html += self._format_json_with_syntax_highlighting(f'- "{key}": {l_val}', "line-removed") + '\n'
+                elif not l_has and c_has:
+                    html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-added") + '\n'
+                elif l_has and c_has and l_val != c_val:
+                    html += self._format_json_with_syntax_highlighting(f'- "{key}": {l_val}', "line-changed") + '\n'
+                    html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-changed") + '\n'
+                else:
+                    html += self._format_json_with_syntax_highlighting(f'  "{key}": {l_val}') + '\n'
+            html += '</div></div>'
+            return html
+
+        # List vs List: compare by index
+        if isinstance(lsr_sample, list) or isinstance(current_sample, list):
+            l_list = lsr_sample if isinstance(lsr_sample, list) else []
+            c_list = current_sample if isinstance(current_sample, list) else []
+            max_len = max(len(l_list), len(c_list))
+            for i in range(max_len):
+                l_has = i < len(l_list)
+                c_has = i < len(c_list)
+                l_val = _serialize(l_list[i]) if l_has else None
+                c_val = _serialize(c_list[i]) if c_has else None
+                label = f'[{i}]'
+                if l_has and not c_has:
+                    html += self._format_json_with_syntax_highlighting(f'- {label}: {l_val}', "line-removed") + '\n'
+                elif not l_has and c_has:
+                    html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-added") + '\n'
+                elif l_has and c_has and l_val != c_val:
+                    html += self._format_json_with_syntax_highlighting(f'- {label}: {l_val}', "line-changed") + '\n'
+                    html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-changed") + '\n'
+                else:
+                    html += self._format_json_with_syntax_highlighting(f'  {label}: {l_val}') + '\n'
+            html += '</div></div>'
+            return html
+
+        # Fallback: show singular value comparison
+        l_val = _serialize(lsr_sample) if lsr_sample is not None else None
+        c_val = _serialize(current_sample) if current_sample is not None else None
+        if l_val is not None and c_val is None:
+            html += self._format_json_with_syntax_highlighting(f'- {l_val}', "line-removed") + '\n'
+        elif l_val is None and c_val is not None:
+            html += self._format_json_with_syntax_highlighting(f'+ {c_val}', "line-added") + '\n'
+        elif l_val is not None and c_val is not None and l_val != c_val:
+            html += self._format_json_with_syntax_highlighting(f'- {l_val}', "line-changed") + '\n'
+            html += self._format_json_with_syntax_highlighting(f'+ {c_val}', "line-changed") + '\n'
+        else:
+            html += self._format_json_with_syntax_highlighting(f'  {l_val}') + '\n'
+
+        html += '</div></div>'
         return html
             
     def _generate_performance_section(self, performance_data: Dict[str, Any]) -> str:
@@ -569,10 +682,10 @@ class HTMLReporter:
         # Highlight punctuation
         json_line = re.sub(r'([{}\[\],])', r'<span class="json-punctuation">\1</span>', json_line)
 
-        # Apply line highlighting if specified
+        # Apply line highlighting if specified; always wrap each line to ensure line breaks
         if line_class:
-            return f'<div class="{line_class}">{json_line}</div>'
-        return json_line
+            return f'<div class="json-line {line_class}">{json_line}</div>'
+        return f'<div class="json-line">{json_line}</div>'
         
     def _last_key_from_path(self, path: str) -> str:
         import re

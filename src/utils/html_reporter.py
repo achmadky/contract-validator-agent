@@ -67,6 +67,7 @@ class HTMLReporter:
                 .json-block {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; background-color: #f5f5f5; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; white-space: pre; }}
                 .json-box {{ border: 1px solid #e0e0e0; border-radius: 4px; padding: 4px; margin: 2px 0; background-color: #fafafa; }}
                 .json-line {{ display: block; }}
+                .json-line {{ padding: 2px 6px; margin: 1px 0; border-radius: 4px; }}
                 .json-key {{ color: #0451a5; }}
                 .json-string {{ color: #a31515; }}
                 .json-number {{ color: #098658; }}
@@ -512,6 +513,12 @@ class HTMLReporter:
             except Exception:
                 return str(v)
 
+        def _is_empty(serialized: Optional[str]) -> bool:
+            if serialized is None:
+                return True
+            s = serialized.strip()
+            return s in ("\"\"", "null", "[]", "{}")
+
         html = '<div class="response-box"><div class="json-block">'
 
         # Dict vs Dict: compare top-level keys only
@@ -529,8 +536,13 @@ class HTMLReporter:
                 elif not l_has and c_has:
                     html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-added") + '\n'
                 elif l_has and c_has and l_val != c_val:
-                    html += self._format_json_with_syntax_highlighting(f'- "{key}": {l_val}', "line-changed") + '\n'
-                    html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-changed") + '\n'
+                    # If new value becomes empty, treat as removal (red)
+                    if _is_empty(c_val):
+                        html += self._format_json_with_syntax_highlighting(f'- "{key}": {l_val}', "line-removed") + '\n'
+                        html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-removed") + '\n'
+                    else:
+                        html += self._format_json_with_syntax_highlighting(f'- "{key}": {l_val}', "line-changed") + '\n'
+                        html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-changed") + '\n'
                 else:
                     html += self._format_json_with_syntax_highlighting(f'  "{key}": {l_val}') + '\n'
             html += '</div></div>'
@@ -552,8 +564,12 @@ class HTMLReporter:
                 elif not l_has and c_has:
                     html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-added") + '\n'
                 elif l_has and c_has and l_val != c_val:
-                    html += self._format_json_with_syntax_highlighting(f'- {label}: {l_val}', "line-changed") + '\n'
-                    html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-changed") + '\n'
+                    if _is_empty(c_val):
+                        html += self._format_json_with_syntax_highlighting(f'- {label}: {l_val}', "line-removed") + '\n'
+                        html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-removed") + '\n'
+                    else:
+                        html += self._format_json_with_syntax_highlighting(f'- {label}: {l_val}', "line-changed") + '\n'
+                        html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-changed") + '\n'
                 else:
                     html += self._format_json_with_syntax_highlighting(f'  {label}: {l_val}') + '\n'
             html += '</div></div>'
@@ -683,8 +699,16 @@ class HTMLReporter:
         json_line = re.sub(r'([{}\[\],])', r'<span class="json-punctuation">\1</span>', json_line)
 
         # Apply line highlighting if specified; always wrap each line to ensure line breaks
+        bg_color = ""
+        if line_class == "line-added":
+            bg_color = "background-color: var(--pass-bg);"
+        elif line_class == "line-removed":
+            bg_color = "background-color: var(--fail-bg);"
+        elif line_class == "line-changed":
+            bg_color = "background-color: var(--warn-bg);"
+            
         if line_class:
-            return f'<div class="json-line {line_class}">{json_line}</div>'
+            return f'<div class="json-line {line_class}" style="{bg_color}">{json_line}</div>'
         return f'<div class="json-line">{json_line}</div>'
         
     def _last_key_from_path(self, path: str) -> str:

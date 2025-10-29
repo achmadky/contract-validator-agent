@@ -21,9 +21,8 @@ Diffy enforces strict backward compatibility by comparing the current API respon
 
 ```bash
 # 1) Clone the repository
-git clone <repository-url>
+git clone https://github.com/achmadky/contract-validator-agent.git
 cd diffy
-
 
 # 2) Install dependencies
 pip install -r requirements.txt
@@ -75,12 +74,11 @@ The HTML reporter focuses on a single, clear Unified Diff view alongside an expl
   - Removed lines (LSR only): soft red
   - Changed lines (value drift): soft amber
   - Unchanged lines: neutral background
-- Path formatting uses readable dot notation, e.g. `root['testing']['inner'][0]` → `testing.inner[0]`
 
-Sample preview image (replace with your screenshot):
+Sample preview image:
 
 ```markdown
-![Unified Diff – Contract Report](docs/unified_diff_sample.png)
+![Unified Diff – Contract Report](./docs/unified_diff_sample.png)
 ```
 
 Open the aggregate dashboard at `reports/contracts_aggregate_<timestamp>.html` or the per-contract report and capture a screenshot to replace the placeholder above.

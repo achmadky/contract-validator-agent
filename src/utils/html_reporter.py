@@ -306,41 +306,9 @@ class HTMLReporter:
             html += '</div>'
             return html
 
-        # Generate side-by-side JSON view with single-line parameters
+        # Show only the Unified Diff view
         if lsr_sample is not None or current_sample is not None:
-            html += '<h3 style="margin:6px 0">JSON Response with Highlighted Differences</h3>'
-            html += '<div class="side-by-side">'
-            
-            # Track paths for different change types
-            missing_keys = critical_diff.get("MISSING_KEYS", []) if critical_diff else []
-            type_changes = critical_diff.get("TYPE_CHANGES", {}) if critical_diff else {}
-            added_keys = all_changes.get("dictionary_item_added", []) if all_changes else []
-            value_changes = all_changes.get("values_changed", {}) if all_changes else {}
-            
-            # Left side: LSR (baseline)
-            html += '<div class="response-box">'
-            html += '<p class="box-title">LSR (Baseline)</p>'
-            html += '<div class="json-block">'
-            if lsr_sample is not None:
-                html = self._format_json_as_single_lines(html, lsr_sample, missing_keys, type_changes, value_changes, "lsr")
-            else:
-                html += '<em style="color:var(--text-muted)">No data</em>'
-            html += '</div></div>'
-            
-            # Right side: Current Response
-            html += '<div class="response-box">'
-            html += '<p class="box-title">Current Response</p>'
-            html += '<div class="json-block">'
-            if current_sample is not None:
-                html = self._format_json_as_single_lines(html, current_sample, added_keys, type_changes, value_changes, "current")
-            else:
-                html += '<em style="color:var(--text-muted)">No data</em>'
-            html += '</div></div>'
-
-            html += '</div>'
-
-            # Optional unified (git-like) diff view
-            html += '<h3 style="margin:12px 0 6px">Unified Diff (git-like)</h3>'
+            html += '<h3 style="margin:12px 0 6px">Unified Diff</h3>'
             html += self._generate_unified_diff_view(lsr_sample, current_sample)
         
         # Add explanation section

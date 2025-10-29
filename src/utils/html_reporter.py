@@ -89,7 +89,7 @@ class HTMLReporter:
                 <h1 style=\"margin:0 0 6px\">Contract Validation Report</h1>
                 <p style=\"margin:0\"><strong>Contract:</strong> {contract_name}</p>
                 <p style=\"margin:0 0 6px;color:var(--text-muted)\"><strong>Generated:</strong> {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-                <div class=\"status-badge\">{status}</div>
+                <div class=\"status-badge\">{self._display_status_label(status)}</div>
             </div>
 
             {self._generate_deterministic_section(validation_results, lsr_sample, current_sample)}
@@ -97,7 +97,7 @@ class HTMLReporter:
 
             <div class=\"section\">
                 <h2 class=\"section-title\">Summary</h2>
-                <p style=\"margin:6px 0\"><strong>Final Status:</strong> {status}</p>
+                <p style=\"margin:6px 0\"><strong>Final Status:</strong> {self._display_status_label(status)}</p>
                 <p style=\"margin:6px 0\"><strong>Reason:</strong> {reason}</p>
                 {self._generate_action_recommendation(validation_results)}
             </div>
@@ -158,13 +158,13 @@ class HTMLReporter:
                 </div>
                 <div class=\"legend\"> 
                     <span><span class=\"dot pass\"></span>Pass: {pass_count}</span>
-                    <span><span class=\"dot warn\"></span>Warnings: {warn_count}</span>
-                    <span><span class=\"dot fail\"></span>Fail: {fail_count}</span>
+                    <span><span class=\"dot warn\"></span>Pass with value changes: {warn_count}</span>
+                    <span><span class=\"dot fail\"></span>Broken: {fail_count}</span>
                     <span><span class=\"dot unknown\"></span>Unknown: {unknown_count}</span>
                 </div>
-                <p class=\"sub-title\" style=\"margin:4px 0 0\">Total: {total} • Failures: {fail_count} • Breaking: {breaking_count} • Perf anomalies: {anomaly_count}</p>
+                <p class=\"sub-title\" style=\"margin:4px 0 0\">Total: {total} • Broken: {fail_count} • Breaking changes: {breaking_count} • Perf anomalies: {anomaly_count}</p>
             </div>
-            <p class=\"hint\">Glance at distribution above; prioritize Failures and Breaking first.</p>
+            <p class=\"hint\">Glance at distribution above; prioritize Broken and Breaking changes first.</p>
         </div>
         """
 
@@ -250,12 +250,12 @@ class HTMLReporter:
 
             block = f"""
             <details class=\"contract-detail\"> 
-              <summary><span class=\"contract-name\">{name}</span> <span class=\"status-badge\" style=\"{status_style}\">{status.replace('_',' ')}</span></summary>
+              <summary><span class=\"contract-name\">{name}</span> <span class=\"status-badge\" style=\"{status_style}\">{self._display_status_label(status)}</span></summary>
               {self._generate_deterministic_section(validation, lsr_sample, current_sample)}
               {self._generate_performance_section(perf)}
               <div class=\"section\">
                 <h2 class=\"section-title\">Summary</h2>
-                <p style=\"margin:6px 0\"><strong>Final Status:</strong> {status}</p>
+                <p style=\"margin:6px 0\"><strong>Final Status:</strong> {self._display_status_label(status)}</p>
                 <p style=\"margin:6px 0\"><strong>Reason:</strong> {validation.get('reason','')}</p>
                 {self._generate_action_recommendation(validation)}
               </div>
@@ -291,6 +291,15 @@ class HTMLReporter:
         }
         return styles.get(status, styles["UNKNOWN"]) 
 
+    def _display_status_label(self, status: str) -> str:
+        mapping = {
+            "FAIL": "Broken",
+            "PASS_WITH_WARNING": "PASS with value changes",
+            "PASS": "PASS",
+            "UNKNOWN": "UNKNOWN",
+        }
+        return mapping.get(status, status.replace('_', ' '))
+
     def _generate_deterministic_section(self, validation_results: Dict[str, Any],
                                         lsr_sample: Optional[Union[Dict[str, Any], List[Any]]] = None,
                                         current_sample: Optional[Union[Dict[str, Any], List[Any]]] = None) -> str:
@@ -323,14 +332,14 @@ class HTMLReporter:
             # Missing keys
             if "MISSING_KEYS" in critical_diff:
                 for item in critical_diff["MISSING_KEYS"]:
-                    html += f'<li><code class="code">{item}</code></li>'
+                    html += f'<li><code class="code">{self._prettify_path(item)}</code></li>'
             
             # Type changes
             if "TYPE_CHANGES" in critical_diff:
                 for path, change in critical_diff["TYPE_CHANGES"].items():
                     old_type = change.get("old_type", "unknown")
                     new_type = change.get("new_type", "unknown")
-                    html += f'<li><code class="code">{path}</code>: Type changed from {old_type} to {new_type}</li>'
+                    html += f'<li><code class="code">{self._prettify_path(path)}</code>: Type changed from {old_type} to {new_type}</li>'
             
             html += '</ul>'
             html += '</div>'
@@ -343,7 +352,7 @@ class HTMLReporter:
                 html += '<h4 style="margin:0 0 6px">New Parameters</h4>'
                 html += '<ul class="list">'
                 for item in all_changes["dictionary_item_added"]:
-                    html += f'<li><code class="code">{item}</code></li>'
+                    html += f'<li><code class="code">{self._prettify_path(item)}</code></li>'
                 html += '</ul>'
                 html += '</div>'
             
@@ -355,7 +364,7 @@ class HTMLReporter:
                 for path, change in all_changes["values_changed"].items():
                     old_value = change.get("old_value", "")
                     new_value = change.get("new_value", "")
-                    html += f'<li><code class="code">{path}</code>: Changed from {old_value} to {new_value}</li>'
+                    html += f'<li><code class="code">{self._prettify_path(path)}</code>: Changed from {old_value} to {new_value}</li>'
                 html += '</ul>'
                 html += '</div>'
         
@@ -629,20 +638,21 @@ class HTMLReporter:
 
     def _format_snippet(self, path: str, old_val: Any, new_val: Any, highlight: str) -> str:
         key_name = self._last_key_from_path(path)
+        display_path = self._prettify_path(path)
         def to_json(v):
             try:
                 return json.dumps(v, ensure_ascii=False)
             except Exception:
                 return str(v)
         if highlight == "missing":
-            return f"<div class='diff-item diff-removed'><strong>Missing</strong> <code class='code'>{path}</code><pre class='code-block'>\"{key_name}\": {to_json(old_val)}</pre></div>"
+            return f"<div class='diff-item diff-removed'><strong>Missing</strong> <code class='code'>{display_path}</code><pre class='code-block'>\"{key_name}\": {to_json(old_val)}</pre></div>"
         if highlight == "changed":
             return (
-                f"<div class='diff-item diff-changed'><strong>Changed</strong> <code class='code'>{path}</code>"
+                f"<div class='diff-item diff-changed'><strong>Changed</strong> <code class='code'>{display_path}</code>"
                 f"<pre class='code-block'>- \"{key_name}\": {to_json(old_val)}\n+ \"{key_name}\": {to_json(new_val)}</pre></div>"
             )
         if highlight == "added":
-            return f"<div class='diff-item diff-added'><strong>Added</strong> <code class='code'>{path}</code><pre class='code-block'>\"{key_name}\": {to_json(new_val)}</pre></div>"
+            return f"<div class='diff-item diff-added'><strong>Added</strong> <code class='code'>{display_path}</code><pre class='code-block'>\"{key_name}\": {to_json(new_val)}</pre></div>"
         return ""
 
     def _format_json_with_syntax_highlighting(self, json_line, line_class=""):
@@ -686,3 +696,11 @@ class HTMLReporter:
             return m[-1]
         idx = re.findall(r"\[(\d+)\]", path)
         return idx[-1] if idx else path
+
+    def _prettify_path(self, path: str) -> str:
+        """Convert DeepDiff path like root['a']['b'][0] -> a.b[0] for readability."""
+        import re
+        s = re.sub(r'^root', '', path)
+        s = re.sub(r"\['([^']+)'\]", r'.\1', s)
+        s = s.lstrip('.')
+        return s

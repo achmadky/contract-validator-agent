@@ -64,6 +64,27 @@ What it does:
   - Per-contract HTML reports: `reports/<contract_name>_<timestamp>.html`
   - Aggregate dashboard: `reports/contracts_aggregate_<timestamp>.html`
 
+### Reports and Unified Diff
+
+The HTML reporter focuses on a single, clear Unified Diff view alongside an explanation of changes and performance validation.
+
+- Status labels: `PASS`, `PASS with value changes`, `Broken`, `Unknown`
+- Overview includes a count of `Breaking changes` detected
+- Unified Diff line colors:
+  - Added lines (current only): soft green
+  - Removed lines (LSR only): soft red
+  - Changed lines (value drift): soft amber
+  - Unchanged lines: neutral background
+- Path formatting uses readable dot notation, e.g. `root['testing']['inner'][0]` → `testing.inner[0]`
+
+Sample preview image (replace with your screenshot):
+
+```markdown
+![Unified Diff – Contract Report](docs/images/unified_diff_sample.png)
+```
+
+Open the aggregate dashboard at `reports/contracts_aggregate_<timestamp>.html` or the per-contract report and capture a screenshot to replace the placeholder above.
+
 ### Fixing Issues (Patch Contracts)
 
 When breaking changes are detected, apply fixes and update the contract:

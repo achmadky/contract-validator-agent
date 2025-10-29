@@ -117,7 +117,7 @@ def run_contract_validation_agent(contract_files: List[str]):
                 critical_diff = regression_diff.get('critical_diff', {})
                 all_other_changes = regression_diff.get("all_other_changes", {})
                 
-                print(f"❌ STATUS: FAILED (CRITICAL REGRESSION)")
+                print(f"❌ STATUS: Broken (Critical regression)")
                 print(f"   Reason: {regression_diff.get('reason')}")
                 
                 # 1. Report Missing Keys (Critical)
@@ -163,7 +163,7 @@ def run_contract_validation_agent(contract_files: List[str]):
                 has_structural_additions = 'dictionary_item_added' in all_changes
 
                 # Print header and details for any change
-                print("⚠️ STATUS: PASSED WITH WARNING (Contract Drift)")
+                print("⚠️ STATUS: PASS with value changes (Contract drift)")
                 print(f"   Reason: {regression_diff.get('reason')}")
                 
                 print("\n--- ALL DIFFERENCES FOUND (Requires Audit) ---")
@@ -189,7 +189,7 @@ def run_contract_validation_agent(contract_files: List[str]):
                     print(f"\n💡 ACTION: Run 'python patch_contract.py {contract_name}' to apply additions locally.")
 
             else:
-                print("✅ STATUS: PASSED (Strict Audit found zero deviation)")
+                print("✅ STATUS: PASS (Strict audit found zero deviation)")
 
 
             # --- PROBABILISTIC (ML) REPORT ---
@@ -215,10 +215,10 @@ def run_contract_validation_agent(contract_files: List[str]):
     # --- 3. FINAL EXECUTION RESULT ---
     print("\n=============================================")
     if overall_fail_count > 0:
-        print(f"🔴 FINAL BUILD STATUS: FAILED. {overall_fail_count} contract(s) broken.")
+        print(f"🔴 FINAL BUILD STATUS: Broken. {overall_fail_count} contract(s) broken.")
         sys.exit(1)
     else:
-        print("🟢 FINAL BUILD STATUS: PASSED. All checks complete.")
+        print("🟢 FINAL BUILD STATUS: PASS. All checks complete.")
         sys.exit(0)
 
 if __name__ == "__main__":

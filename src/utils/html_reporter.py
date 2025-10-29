@@ -63,6 +63,24 @@ class HTMLReporter:
                 summary {{ cursor: pointer; font-weight: 600; font-size: 13px; }}
                 .hint {{ font-size: 12px; color: var(--text-muted); margin-top: 6px; }}
                 .list {{ margin: 0; padding-left: 18px; }}
+                /* JSON syntax highlighting */
+                .json-block {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; background-color: #f5f5f5; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; white-space: pre; }}
+                .json-box {{ border: 1px solid #e0e0e0; border-radius: 4px; padding: 4px; margin: 2px 0; background-color: #fafafa; }}
+                .json-line {{ display: block; }}
+                .json-line {{ padding: 2px 6px; margin: 1px 0; border-radius: 4px; }}
+                .json-key {{ color: #0451a5; }}
+                .json-string {{ color: #a31515; }}
+                .json-number {{ color: #098658; }}
+                .json-boolean {{ color: #0000ff; }}
+                .json-null {{ color: #0000ff; }}
+                .json-punctuation {{ color: #000000; }}
+                .line-removed {{ background-color: var(--fail-bg); color: var(--fail); }}
+                .line-added {{ background-color: var(--pass-bg); color: var(--pass); }}
+                .line-changed {{ background-color: var(--warn-bg); color: var(--warn); }}
+                /* Response boxes and layout */
+                .side-by-side {{ display: flex; gap: 20px; align-items: flex-start; }}
+                .response-box {{ flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background-color: var(--bg-soft); }}
+                .box-title {{ margin: 0 0 6px; font-weight: 600; font-size: 13px; color: #333; }}
                 /* Toggle controls removed */
             </style>
         </head>
@@ -71,7 +89,7 @@ class HTMLReporter:
                 <h1 style=\"margin:0 0 6px\">Contract Validation Report</h1>
                 <p style=\"margin:0\"><strong>Contract:</strong> {contract_name}</p>
                 <p style=\"margin:0 0 6px;color:var(--text-muted)\"><strong>Generated:</strong> {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-                <div class=\"status-badge\">{status}</div>
+                <div class=\"status-badge\">{self._display_status_label(status)}</div>
             </div>
 
             {self._generate_deterministic_section(validation_results, lsr_sample, current_sample)}
@@ -79,7 +97,7 @@ class HTMLReporter:
 
             <div class=\"section\">
                 <h2 class=\"section-title\">Summary</h2>
-                <p style=\"margin:6px 0\"><strong>Final Status:</strong> {status}</p>
+                <p style=\"margin:6px 0\"><strong>Final Status:</strong> {self._display_status_label(status)}</p>
                 <p style=\"margin:6px 0\"><strong>Reason:</strong> {reason}</p>
                 {self._generate_action_recommendation(validation_results)}
             </div>
@@ -140,13 +158,13 @@ class HTMLReporter:
                 </div>
                 <div class=\"legend\"> 
                     <span><span class=\"dot pass\"></span>Pass: {pass_count}</span>
-                    <span><span class=\"dot warn\"></span>Warnings: {warn_count}</span>
-                    <span><span class=\"dot fail\"></span>Fail: {fail_count}</span>
+                    <span><span class=\"dot warn\"></span>Pass with value changes: {warn_count}</span>
+                    <span><span class=\"dot fail\"></span>Broken: {fail_count}</span>
                     <span><span class=\"dot unknown\"></span>Unknown: {unknown_count}</span>
                 </div>
-                <p class=\"sub-title\" style=\"margin:4px 0 0\">Total: {total} • Failures: {fail_count} • Breaking: {breaking_count} • Perf anomalies: {anomaly_count}</p>
+                <p class=\"sub-title\" style=\"margin:4px 0 0\">Total: {total} • Broken: {fail_count} • Breaking changes: {breaking_count} • Perf anomalies: {anomaly_count}</p>
             </div>
-            <p class=\"hint\">Glance at distribution above; prioritize Failures and Breaking first.</p>
+            <p class=\"hint\">Glance at distribution above; prioritize Broken and Breaking changes first.</p>
         </div>
         """
 
@@ -162,6 +180,15 @@ class HTMLReporter:
                     --border: #eee;
                     --bg-soft: #fafafa;
                     --text-muted: #666;
+                    --bg-card: #ffffff;
+                    --pass: #2e7d32;
+                    --pass-bg: #dff2e1;
+                    --warn: #b26a00;
+                    --warn-bg: #ffefdb;
+                    --fail: #c62828;
+                    --fail-bg: #fee6e6;
+                    --unknown: #6b7280;
+                    --unknown-bg: #f0f2f5;
                 }}
                 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; line-height: 1.6; color: #333; max-width: 980px; margin: 0 auto; padding: 20px; }}
                 .section {{ margin-bottom: 18px; border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--bg-card); box-shadow: 0 1px 2px rgba(0,0,0,0.03); }}
@@ -223,12 +250,12 @@ class HTMLReporter:
 
             block = f"""
             <details class=\"contract-detail\"> 
-              <summary><span class=\"contract-name\">{name}</span> <span class=\"status-badge\" style=\"{status_style}\">{status.replace('_',' ')}</span></summary>
+              <summary><span class=\"contract-name\">{name}</span> <span class=\"status-badge\" style=\"{status_style}\">{self._display_status_label(status)}</span></summary>
               {self._generate_deterministic_section(validation, lsr_sample, current_sample)}
               {self._generate_performance_section(perf)}
               <div class=\"section\">
                 <h2 class=\"section-title\">Summary</h2>
-                <p style=\"margin:6px 0\"><strong>Final Status:</strong> {status}</p>
+                <p style=\"margin:6px 0\"><strong>Final Status:</strong> {self._display_status_label(status)}</p>
                 <p style=\"margin:6px 0\"><strong>Reason:</strong> {validation.get('reason','')}</p>
                 {self._generate_action_recommendation(validation)}
               </div>
@@ -264,6 +291,15 @@ class HTMLReporter:
         }
         return styles.get(status, styles["UNKNOWN"]) 
 
+    def _display_status_label(self, status: str) -> str:
+        mapping = {
+            "FAIL": "Broken",
+            "PASS_WITH_WARNING": "PASS with value changes",
+            "PASS": "PASS",
+            "UNKNOWN": "UNKNOWN",
+        }
+        return mapping.get(status, status.replace('_', ' '))
+
     def _generate_deterministic_section(self, validation_results: Dict[str, Any],
                                         lsr_sample: Optional[Union[Dict[str, Any], List[Any]]] = None,
                                         current_sample: Optional[Union[Dict[str, Any], List[Any]]] = None) -> str:
@@ -273,89 +309,265 @@ class HTMLReporter:
         html = '<div class="section">'
         html += '<h2 class="section-title">Deterministic Validation</h2>'
 
+        # If no differences found, show a simple message
+        if not critical_diff and not all_changes:
+            html += '<p style="margin:6px 0">No differences detected. Contract is fully compatible.</p>'
+            html += '</div>'
+            return html
+
+        # Show only the Unified Diff view
+        if lsr_sample is not None or current_sample is not None:
+            html += '<h3 style="margin:12px 0 6px">Unified Diff</h3>'
+            html += self._generate_unified_diff_view(lsr_sample, current_sample)
+        
+        # Add explanation section
+        html += '<h3 style="margin:12px 0 6px">Explanation of Changes</h3>'
+        
         # Breaking changes
         if critical_diff:
-            html += '<div class="sub-title">Strict backward compatibility checks</div>'
-            html += '<h3 style="margin:6px 0">Breaking Changes</h3>'
+            html += '<div class="diff-item diff-removed">'
+            html += '<h4 style="margin:0 0 6px">Breaking Changes</h4>'
+            html += '<ul class="list">'
+            
             # Missing keys
             if "MISSING_KEYS" in critical_diff:
-                html += '<div class="diff-item diff-removed">'
-                html += '<h4 style="margin:0 0 6px">Missing Keys</h4>'
-                html += '<ul class="list">'
                 for item in critical_diff["MISSING_KEYS"]:
-                    html += f'<li><code class="code">{item}</code></li>'
-                html += '</ul>'
-                # Collapsible inline snippets for missing
-                if lsr_sample is not None and critical_diff["MISSING_KEYS"]:
-                    snippets: List[str] = []
-                    for path in critical_diff["MISSING_KEYS"]:
-                        expected = self._resolve_path_value(lsr_sample, path)
-                        snippets.append(self._format_snippet(path, expected, None, highlight="missing"))
-                    html += f'<details><summary>Show expected JSON snippets ({len(snippets)})</summary>' + "".join(snippets) + '</details>'
-                html += '<div class="hint">Subjective: Backfill missing fields or version the API to avoid breaking clients.</div>'
-                html += '</div>'
+                    html += f'<li><code class="code">{self._prettify_path(item)}</code></li>'
+            
             # Type changes
             if "TYPE_CHANGES" in critical_diff:
-                html += '<div class="diff-item diff-changed">'
-                html += '<h4 style="margin:0 0 6px">Type Changes</h4>'
-                html += '<table>'
-                html += '<tr><th>Path</th><th>Old Type</th><th>New Type</th></tr>'
                 for path, change in critical_diff["TYPE_CHANGES"].items():
                     old_type = change.get("old_type", "unknown")
                     new_type = change.get("new_type", "unknown")
-                    html += f'<tr><td><code class="code">{path}</code></td><td>{old_type}</td><td>{new_type}</td></tr>'
-                html += '</table>'
-                html += '<div class="hint">Subjective: Prefer adapters or versioned responses for type changes.</div>'
-                html += '</div>'
-
+                    html += f'<li><code class="code">{self._prettify_path(path)}</code>: Type changed from {old_type} to {new_type}</li>'
+            
+            html += '</ul>'
+            html += '</div>'
+        
         # Other changes
         if all_changes:
-            html += '<h3 style="margin:12px 0 6px">Other Changes</h3>'
             # Added keys
             if "dictionary_item_added" in all_changes:
                 html += '<div class="diff-item diff-added">'
-                html += '<h4 style="margin:0 0 6px">Added Keys</h4>'
+                html += '<h4 style="margin:0 0 6px">New Parameters</h4>'
                 html += '<ul class="list">'
                 for item in all_changes["dictionary_item_added"]:
-                    html += f'<li><code class="code">{item}</code></li>'
+                    html += f'<li><code class="code">{self._prettify_path(item)}</code></li>'
                 html += '</ul>'
-                # Collapsible inline snippets
-                if current_sample is not None and all_changes["dictionary_item_added"]:
-                    add_snippets: List[str] = []
-                    for path in all_changes["dictionary_item_added"]:
-                        new_val = self._resolve_path_value(current_sample, path)
-                        add_snippets.append(self._format_snippet(path, None, new_val, highlight="added"))
-                    html += f'<details><summary>Show new JSON snippets ({len(add_snippets)})</summary>' + "".join(add_snippets) + '</details>'
-                html += '<div class="hint">Subjective: If intentional, patch and document additions for clarity.</div>'
                 html += '</div>'
+            
             # Value changes
             if "values_changed" in all_changes:
                 html += '<div class="diff-item diff-changed">'
                 html += '<h4 style="margin:0 0 6px">Value Changes</h4>'
-                html += '<table>'
-                html += '<tr><th>Path</th><th>Old</th><th>New</th></tr>'
+                html += '<ul class="list">'
                 for path, change in all_changes["values_changed"].items():
                     old_value = change.get("old_value", "")
                     new_value = change.get("new_value", "")
-                    html += f'<tr><td><code class="code">{path}</code></td><td>{old_value}</td><td>{new_value}</td></tr>'
-                html += '</table>'
-                # Collapsible inline diffs
-                vc_snippets: List[str] = []
-                for path, change in all_changes["values_changed"].items():
-                    old_value = change.get("old_value")
-                    new_value = change.get("new_value")
-                    vc_snippets.append(self._format_snippet(path, old_value, new_value, highlight="changed"))
-                if vc_snippets:
-                    html += f'<details><summary>Show inline diffs ({len(vc_snippets)})</summary>' + "".join(vc_snippets) + '</details>'
-                html += '<div class="hint">Subjective: Confirm rule changes; update docs/contract or revert upstream.</div>'
+                    html += f'<li><code class="code">{self._prettify_path(path)}</code>: Changed from {old_value} to {new_value}</li>'
+                html += '</ul>'
                 html += '</div>'
-
-        if not critical_diff and not all_changes:
-            html += '<p style="margin:6px 0">No differences detected. Contract is fully compatible.</p>'
-
+        
         html += '</div>'
         return html
+            
+    def _format_json_as_single_lines(self, html, json_obj, special_keys1, special_keys2, special_keys3, side):
+        """Format JSON with each parameter on a single line"""
+        if isinstance(json_obj, dict):
+            html += '<div class="json-box">\n'
+            
+            # Process each key-value pair
+            items = list(json_obj.items())
+            for i, (key, value) in enumerate(items):
+                # Determine if this key is special
+                line_class = ""
+                if side == "lsr":
+                    # For LSR side, highlight missing keys and changed values
+                    for path in special_keys1:  # missing_keys
+                        if path.endswith(key) or path == key:
+                            line_class = "line-removed"
+                            break
+                    if not line_class:
+                        for path in special_keys2:  # type_changes
+                            if path.endswith(key) or path == key:
+                                line_class = "line-changed"
+                                break
+                    if not line_class:
+                        for path in special_keys3:  # value_changes
+                            if path.endswith(key) or path == key:
+                                line_class = "line-changed"
+                                break
+                else:  # current
+                    # For current side, highlight added keys and changed values
+                    for path in special_keys1:  # added_keys
+                        if path.endswith(key) or path == key:
+                            line_class = "line-added"
+                            break
+                    if not line_class:
+                        for path in special_keys2:  # type_changes
+                            if path.endswith(key) or path == key:
+                                line_class = "line-changed"
+                                break
+                    if not line_class:
+                        for path in special_keys3:  # value_changes
+                            if path.endswith(key) or path == key:
+                                line_class = "line-changed"
+                                break
+                
+                # Format the value as a string
+                if isinstance(value, (dict, list)):
+                    value_str = json.dumps(value, ensure_ascii=False)
+                else:
+                    value_str = json.dumps(value, ensure_ascii=False)
+                
+                # Create the line with proper comma
+                line = f'  "{key}": {value_str}{", " if i < len(items) - 1 else ""}'
+                
+                # Apply syntax highlighting and line highlighting
+                html += self._format_json_with_syntax_highlighting(line, line_class) + '\n'
+            
+            html += '</div>\n'
+        elif isinstance(json_obj, list):
+            html += '<div class="json-box">\n'
+            
+            # Process each item in the list
+            for i, item in enumerate(json_obj):
+                if isinstance(item, (dict, list)):
+                    value_str = json.dumps(item, ensure_ascii=False)
+                else:
+                    value_str = json.dumps(item, ensure_ascii=False)
+                
+                # Create the line with proper comma
+                line = f'  {value_str}{", " if i < len(json_obj) - 1 else ""}'
+                
+                # Apply syntax highlighting
+                html += self._format_json_with_syntax_highlighting(line) + '\n'
+            
+            html += '</div>\n'
+        else:
+            # For primitive values
+            html += '<div class="json-box">' + json.dumps(json_obj, ensure_ascii=False) + '</div>\n'
+        
+        return html
 
+    def _flatten_json(self, obj: Any, prefix: str = "") -> Dict[str, str]:
+        """Flatten a JSON-like object into path -> serialized value mappings.
+        Paths follow DeepDiff-style (e.g., root['a']['b'][0])."""
+        import json as _json
+        flat: Dict[str, str] = {}
+
+        def _walk(value: Any, path: str):
+            if isinstance(value, dict):
+                for k, v in value.items():
+                    _walk(v, f"{path}['{k}']")
+            elif isinstance(value, list):
+                for i, v in enumerate(value):
+                    _walk(v, f"{path}[{i}]")
+            else:
+                try:
+                    flat[path] = _json.dumps(value, ensure_ascii=False)
+                except Exception:
+                    flat[path] = str(value)
+
+        base = prefix or "root"
+        _walk(obj, base)
+        return flat
+
+    def _generate_unified_diff_view(self, lsr_sample: Optional[Union[Dict[str, Any], List[Any]]],
+                                    current_sample: Optional[Union[Dict[str, Any], List[Any]]]) -> str:
+        """Produce a git-like unified diff where each top-level parameter is one line.
+        - Unchanged lines have no symbol (context).
+        - Removed lines start with '-' and are red.
+        - Added lines start with '+' and are green.
+        - Changed lines show '-' and '+' pair in yellow.
+        Fallback to flattened diff if inputs are not both dicts/lists.
+        """
+        import json as _json
+
+        def _serialize(v: Any) -> str:
+            try:
+                return _json.dumps(v, ensure_ascii=False)
+            except Exception:
+                return str(v)
+
+        def _is_empty(serialized: Optional[str]) -> bool:
+            if serialized is None:
+                return True
+            s = serialized.strip()
+            return s in ("\"\"", "null", "[]", "{}")
+
+        html = '<div class="response-box"><div class="json-block">'
+
+        # Dict vs Dict: compare top-level keys only
+        if isinstance(lsr_sample, dict) or isinstance(current_sample, dict):
+            l_dict = lsr_sample if isinstance(lsr_sample, dict) else {}
+            c_dict = current_sample if isinstance(current_sample, dict) else {}
+            all_keys = sorted(set(l_dict.keys()) | set(c_dict.keys()))
+            for key in all_keys:
+                l_has = key in l_dict
+                c_has = key in c_dict
+                l_val = _serialize(l_dict[key]) if l_has else None
+                c_val = _serialize(c_dict[key]) if c_has else None
+                if l_has and not c_has:
+                    html += self._format_json_with_syntax_highlighting(f'- "{key}": {l_val}', "line-removed") + '\n'
+                elif not l_has and c_has:
+                    html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-added") + '\n'
+                elif l_has and c_has and l_val != c_val:
+                    # If new value becomes empty, treat as removal (red)
+                    if _is_empty(c_val):
+                        html += self._format_json_with_syntax_highlighting(f'- "{key}": {l_val}', "line-removed") + '\n'
+                        html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-removed") + '\n'
+                    else:
+                        html += self._format_json_with_syntax_highlighting(f'- "{key}": {l_val}', "line-changed") + '\n'
+                        html += self._format_json_with_syntax_highlighting(f'+ "{key}": {c_val}', "line-changed") + '\n'
+                else:
+                    html += self._format_json_with_syntax_highlighting(f'  "{key}": {l_val}') + '\n'
+            html += '</div></div>'
+            return html
+
+        # List vs List: compare by index
+        if isinstance(lsr_sample, list) or isinstance(current_sample, list):
+            l_list = lsr_sample if isinstance(lsr_sample, list) else []
+            c_list = current_sample if isinstance(current_sample, list) else []
+            max_len = max(len(l_list), len(c_list))
+            for i in range(max_len):
+                l_has = i < len(l_list)
+                c_has = i < len(c_list)
+                l_val = _serialize(l_list[i]) if l_has else None
+                c_val = _serialize(c_list[i]) if c_has else None
+                label = f'[{i}]'
+                if l_has and not c_has:
+                    html += self._format_json_with_syntax_highlighting(f'- {label}: {l_val}', "line-removed") + '\n'
+                elif not l_has and c_has:
+                    html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-added") + '\n'
+                elif l_has and c_has and l_val != c_val:
+                    if _is_empty(c_val):
+                        html += self._format_json_with_syntax_highlighting(f'- {label}: {l_val}', "line-removed") + '\n'
+                        html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-removed") + '\n'
+                    else:
+                        html += self._format_json_with_syntax_highlighting(f'- {label}: {l_val}', "line-changed") + '\n'
+                        html += self._format_json_with_syntax_highlighting(f'+ {label}: {c_val}', "line-changed") + '\n'
+                else:
+                    html += self._format_json_with_syntax_highlighting(f'  {label}: {l_val}') + '\n'
+            html += '</div></div>'
+            return html
+
+        # Fallback: show singular value comparison
+        l_val = _serialize(lsr_sample) if lsr_sample is not None else None
+        c_val = _serialize(current_sample) if current_sample is not None else None
+        if l_val is not None and c_val is None:
+            html += self._format_json_with_syntax_highlighting(f'- {l_val}', "line-removed") + '\n'
+        elif l_val is None and c_val is not None:
+            html += self._format_json_with_syntax_highlighting(f'+ {c_val}', "line-added") + '\n'
+        elif l_val is not None and c_val is not None and l_val != c_val:
+            html += self._format_json_with_syntax_highlighting(f'- {l_val}', "line-changed") + '\n'
+            html += self._format_json_with_syntax_highlighting(f'+ {c_val}', "line-changed") + '\n'
+        else:
+            html += self._format_json_with_syntax_highlighting(f'  {l_val}') + '\n'
+
+        html += '</div></div>'
+        return html
+            
     def _generate_performance_section(self, performance_data: Dict[str, Any]) -> str:
         is_anomaly = performance_data.get("is_anomaly", False)
         current_latency = performance_data.get("current_latency", 0)
@@ -426,22 +638,57 @@ class HTMLReporter:
 
     def _format_snippet(self, path: str, old_val: Any, new_val: Any, highlight: str) -> str:
         key_name = self._last_key_from_path(path)
+        display_path = self._prettify_path(path)
         def to_json(v):
             try:
                 return json.dumps(v, ensure_ascii=False)
             except Exception:
                 return str(v)
         if highlight == "missing":
-            return f"<div class='diff-item diff-removed'><strong>Missing</strong> <code class='code'>{path}</code><pre class='code-block'>\"{key_name}\": {to_json(old_val)}</pre></div>"
+            return f"<div class='diff-item diff-removed'><strong>Missing</strong> <code class='code'>{display_path}</code><pre class='code-block'>\"{key_name}\": {to_json(old_val)}</pre></div>"
         if highlight == "changed":
             return (
-                f"<div class='diff-item diff-changed'><strong>Changed</strong> <code class='code'>{path}</code>"
+                f"<div class='diff-item diff-changed'><strong>Changed</strong> <code class='code'>{display_path}</code>"
                 f"<pre class='code-block'>- \"{key_name}\": {to_json(old_val)}\n+ \"{key_name}\": {to_json(new_val)}</pre></div>"
             )
         if highlight == "added":
-            return f"<div class='diff-item diff-added'><strong>Added</strong> <code class='code'>{path}</code><pre class='code-block'>\"{key_name}\": {to_json(new_val)}</pre></div>"
+            return f"<div class='diff-item diff-added'><strong>Added</strong> <code class='code'>{display_path}</code><pre class='code-block'>\"{key_name}\": {to_json(new_val)}</pre></div>"
         return ""
 
+    def _format_json_with_syntax_highlighting(self, json_line, line_class=""):
+        import re
+        # Apply syntax highlighting to JSON elements (non-anchored to match more cases)
+        # Highlight keys
+        json_line = re.sub(r'(\"(?:\\.|[^\"\\])*\")\s*:', r'<span class="json-key">\1</span>:', json_line)
+
+        # Highlight string values
+        json_line = re.sub(r':\s*(\"(?:\\.|[^\"\\])*\")', r': <span class="json-string">\1</span>', json_line)
+
+        # Highlight numbers
+        json_line = re.sub(r':\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)', r': <span class="json-number">\1</span>', json_line)
+
+        # Highlight booleans
+        json_line = re.sub(r':\s*(true|false)', r': <span class="json-boolean">\1</span>', json_line)
+
+        # Highlight null
+        json_line = re.sub(r':\s*(null)', r': <span class="json-null">\1</span>', json_line)
+
+        # Highlight punctuation
+        json_line = re.sub(r'([{}\[\],])', r'<span class="json-punctuation">\1</span>', json_line)
+
+        # Apply line highlighting if specified; always wrap each line to ensure line breaks
+        bg_color = ""
+        if line_class == "line-added":
+            bg_color = "background-color: var(--pass-bg);"
+        elif line_class == "line-removed":
+            bg_color = "background-color: var(--fail-bg);"
+        elif line_class == "line-changed":
+            bg_color = "background-color: var(--warn-bg);"
+            
+        if line_class:
+            return f'<div class="json-line {line_class}" style="{bg_color}">{json_line}</div>'
+        return f'<div class="json-line">{json_line}</div>'
+        
     def _last_key_from_path(self, path: str) -> str:
         import re
         m = re.findall(r"\['([^']+)'\]", path)
@@ -449,3 +696,11 @@ class HTMLReporter:
             return m[-1]
         idx = re.findall(r"\[(\d+)\]", path)
         return idx[-1] if idx else path
+
+    def _prettify_path(self, path: str) -> str:
+        """Convert DeepDiff path like root['a']['b'][0] -> a.b[0] for readability."""
+        import re
+        s = re.sub(r'^root', '', path)
+        s = re.sub(r"\['([^']+)'\]", r'.\1', s)
+        s = s.lstrip('.')
+        return s

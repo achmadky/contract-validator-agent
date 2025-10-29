@@ -80,7 +80,7 @@ The HTML reporter focuses on a single, clear Unified Diff view alongside an expl
 Sample preview image (replace with your screenshot):
 
 ```markdown
-![Unified Diff – Contract Report](docs/images/unified_diff_sample.png)
+![Unified Diff – Contract Report](docs/unified_diff_sample.png)
 ```
 
 Open the aggregate dashboard at `reports/contracts_aggregate_<timestamp>.html` or the per-contract report and capture a screenshot to replace the placeholder above.

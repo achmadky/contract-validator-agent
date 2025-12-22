@@ -1,0 +1,13 @@
+{
+  "api_contract_meta": {
+    "target_url": "https://jsonplaceholder.typicode.com/posts"
+  },
+  "request_details": {
+    "headers": {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    }
+  },
+  "latest_successful_response": {
+   "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit", "body": "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto"}
+}
